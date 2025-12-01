@@ -853,16 +853,13 @@ function renderScheduleCurrentLine() {
       }
 
       td.addEventListener("click", () => {
-        openShiftPopover(
-          {
-            line,
-            employeeId: row.employeeId,
-            employeeName: row.employeeName,
-            day: sched.days[dayIndex],
-            shift: shift || null,
-          },
-          td
-        );
+        handleShiftCellClick({
+          line,
+          row,
+          day: sched.days[dayIndex],
+          shift: shift || null,
+          cellEl: td,
+        });
       });
 
       td.addEventListener("mouseenter", () => {
