@@ -126,38 +126,25 @@ function addMinutesLocal(baseMinutes, delta) {
   return { time: `${hh}:${mm}`, dayShift };
 }
 
-/**
- * Pyrus: due (UTC) + duration -> локальное начало/конец (GMT+4)
- */
-function convertUtcDueToLocalRange(utcIsoString, durationMinutes) {
+function convertUtcStartToLocalRange(utcIsoString, durationMinutes) {
   if (!utcIsoString || typeof utcIsoString !== "string") return null;
-  const utcDate = new Date(utcIsoString);
-  if (Number.isNaN(utcDate.getTime())) return null;
+  const startUtc = new Date(utcIsoString);
+  if (Number.isNaN(startUtc.getTime())) return null;
 
-  const dueLocalMs =
-    utcDate.getTime() + LOCAL_TZ_OFFSET_MIN * 60 * 1000;
-  const dueLocal = new Date(dueLocalMs);
+  const startLocalMs =
+    startUtc.getTime() + LOCAL_TZ_OFFSET_MIN * 60 * 1000;
+  const startLocalDate = new Date(startLocalMs);
 
-  const endMinutes = dueLocal.getHours() * 60 + dueLocal.getMinutes();
-  const { time: startLocal, dayShift } = addMinutesLocal(
-    endMinutes,
-    -(durationMinutes || 0)
-  );
+  const startHH = String(startLocalDate.getHours()).padStart(2, "0");
+  const startMM = String(startLocalDate.getMinutes()).padStart(2, "0");
+  const startLocal = `${startHH}:${startMM}`;
 
-  const endHH = String(dueLocal.getHours()).padStart(2, "0");
-  const endMM = String(dueLocal.getMinutes()).padStart(2, "0");
-  const endLocal = `${endHH}:${endMM}`;
+  const startMinutes = startLocalDate.getHours() * 60 + startLocalDate.getMinutes();
+  const { time: endLocal } = addMinutesLocal(startMinutes, durationMinutes || 0);
 
-  const startDate = new Date(
-    dueLocal.getFullYear(),
-    dueLocal.getMonth(),
-    dueLocal.getDate()
-  );
-  startDate.setDate(startDate.getDate() + dayShift);
-
-  const y = startDate.getFullYear();
-  const m = String(startDate.getMonth() + 1).padStart(2, "0");
-  const d = String(startDate.getDate()).padStart(2, "0");
+  const y = startLocalDate.getFullYear();
+  const m = String(startLocalDate.getMonth() + 1).padStart(2, "0");
+  const d = String(startLocalDate.getDate()).padStart(2, "0");
 
   return {
     localDateKey: `${y}-${m}-${d}`,
@@ -186,18 +173,23 @@ function computeDurationMinutes(startLocal, endLocal) {
   return diff;
 }
 
-function buildLocalStartIso(day, startLocal) {
+function convertLocalRangeToUtc(day, startLocal, endLocal) {
+  const durationMinutes = computeDurationMinutes(startLocal, endLocal);
+  if (durationMinutes == null) return null;
+
   const { year, monthIndex } = state.monthMeta;
   const [hh, mm] = (startLocal || "00:00").split(":");
-  const month = String(monthIndex + 1).padStart(2, "0");
-  const dayStr = String(day).padStart(2, "0");
 
-  const offsetMinAbs = Math.abs(LOCAL_TZ_OFFSET_MIN);
-  const offSign = LOCAL_TZ_OFFSET_MIN >= 0 ? "+" : "-";
-  const offHH = String(Math.floor(offsetMinAbs / 60)).padStart(2, "0");
-  const offMM = String(offsetMinAbs % 60).padStart(2, "0");
+  const startUtcMs =
+    Date.UTC(year, monthIndex, day, Number(hh), Number(mm)) -
+    LOCAL_TZ_OFFSET_MIN * 60 * 1000;
+  const endUtcMs = startUtcMs + durationMinutes * 60 * 1000;
 
-  return `${year}-${month}-${dayStr}T${hh}:${mm}:00${offSign}${offHH}:${offMM}`;
+  return {
+    durationMinutes,
+    startUtcIso: new Date(startUtcMs).toISOString(),
+    endUtcIso: new Date(endUtcMs).toISOString(),
+  };
 }
 
 // -----------------------------
@@ -657,12 +649,29 @@ function shiftsEqual(a, b) {
   if (!a || !b) return false;
   const normalizeAmount = (val) => Number(val || 0);
   const normalizeTemplate = (val) => (val != null ? Number(val) : null);
+  const normalizeIso = (iso) => {
+    if (!iso) return null;
+    const t = new Date(iso).getTime();
+    return Number.isNaN(t) ? null : t;
+  };
+
+  const normDuration = (shift) => {
+    if (shift?.durationMinutes != null) return Number(shift.durationMinutes);
+    const duration = computeDurationMinutes(
+      shift?.startLocal,
+      shift?.endLocal
+    );
+    return duration == null ? null : duration;
+  };
 
   return (
     (a.startLocal || "") === (b.startLocal || "") &&
     (a.endLocal || "") === (b.endLocal || "") &&
     normalizeAmount(a.amount) === normalizeAmount(b.amount) &&
-    normalizeTemplate(a.templateId) === normalizeTemplate(b.templateId)
+    normalizeTemplate(a.templateId) === normalizeTemplate(b.templateId) &&
+    normalizeIso(a.startUtcIso) === normalizeIso(b.startUtcIso) &&
+    normalizeIso(a.endUtcIso) === normalizeIso(b.endUtcIso) &&
+    normDuration(a) === normDuration(b)
   );
 }
 
@@ -695,17 +704,24 @@ function buildPyrusChangesPayload() {
         if (!baseShift && !currentShift) return;
 
         if (!baseShift && currentShift) {
-          const duration = computeDurationMinutes(
-            currentShift.startLocal,
-            currentShift.endLocal
-          );
-          if (duration == null) return;
+          const conversion =
+            currentShift.startUtcIso && currentShift.durationMinutes != null
+              ? {
+                  startUtcIso: currentShift.startUtcIso,
+                  durationMinutes: Number(currentShift.durationMinutes),
+                }
+              : convertLocalRangeToUtc(
+                  day,
+                  currentShift.startLocal,
+                  currentShift.endLocal
+                );
+          if (!conversion) return;
 
           result.create.task.push({
             employee_id: row.employeeId,
             item_id: currentShift.templateId ?? null,
-            start: buildLocalStartIso(day, currentShift.startLocal),
-            duration,
+            start: conversion.startUtcIso,
+            duration: conversion.durationMinutes,
             amount: Number(currentShift.amount || 0),
           });
           return;
@@ -719,18 +735,25 @@ function buildPyrusChangesPayload() {
         }
 
         if (baseShift && currentShift && !shiftsEqual(baseShift, currentShift)) {
-          const duration = computeDurationMinutes(
-            currentShift.startLocal,
-            currentShift.endLocal
-          );
-          if (duration == null) return;
+          const conversion =
+            currentShift.startUtcIso && currentShift.durationMinutes != null
+              ? {
+                  startUtcIso: currentShift.startUtcIso,
+                  durationMinutes: Number(currentShift.durationMinutes),
+                }
+              : convertLocalRangeToUtc(
+                  day,
+                  currentShift.startLocal,
+                  currentShift.endLocal
+                );
+          if (!conversion) return;
 
           result.edit.task.push({
             task_id: baseShift.taskId,
             employee_id: row.employeeId,
             item_id: currentShift.templateId ?? baseShift.templateId ?? null,
-            start: buildLocalStartIso(day, currentShift.startLocal),
-            duration,
+            start: conversion.startUtcIso,
+            duration: conversion.durationMinutes,
             amount: Number(currentShift.amount || 0),
           });
         }
@@ -839,7 +862,16 @@ function handleShiftCellClick({ line, row, day, dayIndex, shift, cellEl }) {
         : null;
 
     const key = `${line}-${year}-${monthIndex + 1}-${row.employeeId}-${day}`;
-    state.localChanges[key] = { startLocal, endLocal, amount, templateId };
+    const conversion = convertLocalRangeToUtc(day, startLocal, endLocal);
+    state.localChanges[key] = {
+      startLocal,
+      endLocal,
+      amount,
+      templateId,
+      startUtcIso: conversion?.startUtcIso || null,
+      endUtcIso: conversion?.endUtcIso || null,
+      durationMinutes: conversion?.durationMinutes ?? null,
+    };
     persistLocalChanges();
 
     applyLocalChangesToSchedule();
@@ -1019,10 +1051,15 @@ async function reloadScheduleForCurrentMonth() {
 
     if (!dueField || !personField || !shiftField) continue;
 
-    const range = convertUtcDueToLocalRange(
-      dueField.value,
-      Number(dueField.duration || 0)
-    );
+    const rawDuration = Number(dueField.duration || 0);
+    const endUtcMs = new Date(dueField.value).getTime();
+    if (Number.isNaN(endUtcMs)) continue;
+
+    const startUtcMs = endUtcMs - rawDuration * 60 * 1000;
+    const startUtcIso = new Date(startUtcMs).toISOString();
+    const endUtcIso = new Date(endUtcMs).toISOString();
+
+    const range = convertUtcStartToLocalRange(startUtcIso, rawDuration);
     if (!range) continue;
 
     const { localDateKey, startLocal, endLocal } = range;
@@ -1065,19 +1102,20 @@ async function reloadScheduleForCurrentMonth() {
         ? moneyField.value
         : Number(moneyField.value || 0);
 
-    const shiftTimes = formatShiftTimeForCell(startLocal, endLocal);
-
     const map = shiftMapByLine[line];
     if (!map[empId]) map[empId] = {};
 
     map[empId][d] = {
-      startLocal: shiftTimes.start,
-      endLocal: shiftTimes.end,
+      startLocal,
+      endLocal,
       amount,
       templateId: shiftItemId,
       taskId: task.id,
       rawDueValue: dueField.value,
-      rawDuration: Number(dueField.duration || 0),
+      rawDuration,
+      durationMinutes: rawDuration,
+      startUtcIso,
+      endUtcIso,
       rawShift: shiftCatalog,
       specialShortLabel,
     };
@@ -1491,11 +1529,15 @@ function openShiftPopover(context, anchorEl) {
       const key = `${line}-${year}-${monthIndex + 1}-${employeeId}-${day}`;
       const templateId =
         selectedTemplateId != null ? selectedTemplateId : shift?.templateId;
+      const conversion = convertLocalRangeToUtc(day, start, end);
       state.localChanges[key] = {
         startLocal: start,
         endLocal: end,
         amount,
         templateId,
+        startUtcIso: conversion?.startUtcIso || null,
+        endUtcIso: conversion?.endUtcIso || null,
+        durationMinutes: conversion?.durationMinutes ?? null,
       };
       persistLocalChanges();
 
@@ -1541,12 +1583,20 @@ function applyLocalChangesToSchedule() {
           return;
         }
 
+        const enriched = change.startUtcIso
+          ? change
+          : convertLocalRangeToUtc(day, change.startLocal, change.endLocal) ||
+            change;
+
         if (!row.shiftsByDay[idx]) {
           row.shiftsByDay[idx] = {
             startLocal: change.startLocal,
             endLocal: change.endLocal,
             amount: Number(change.amount || 0),
             templateId: change.templateId ?? null,
+            startUtcIso: enriched.startUtcIso || null,
+            endUtcIso: enriched.endUtcIso || null,
+            durationMinutes: enriched.durationMinutes ?? null,
           };
         } else {
           row.shiftsByDay[idx].startLocal = change.startLocal;
@@ -1555,6 +1605,10 @@ function applyLocalChangesToSchedule() {
           if (change.templateId != null) {
             row.shiftsByDay[idx].templateId = change.templateId;
           }
+          row.shiftsByDay[idx].startUtcIso = enriched.startUtcIso || null;
+          row.shiftsByDay[idx].endUtcIso = enriched.endUtcIso || null;
+          row.shiftsByDay[idx].durationMinutes =
+            enriched.durationMinutes ?? row.shiftsByDay[idx].durationMinutes;
         }
       });
     }
