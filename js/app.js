@@ -62,6 +62,10 @@ const state = {
     L1: { monthKey: null, days: [], rows: [] },
     L2: { monthKey: null, days: [], rows: [] },
   },
+  originalScheduleByLine: {
+    L1: { monthKey: null, days: [], rows: [] },
+    L2: { monthKey: null, days: [], rows: [] },
+  },
   localChanges: {},
   changeHistory: [],
   monthMeta: {
@@ -80,6 +84,10 @@ const STORAGE_KEYS = {
   changeHistory: "sm1_change_history",
   theme: "sm1_theme_preference",
 };
+
+function deepClone(obj) {
+  return JSON.parse(JSON.stringify(obj));
+}
 
 // -----------------------------
 // Утилиты времени
@@ -160,6 +168,36 @@ function convertUtcDueToLocalRange(utcIsoString, durationMinutes) {
 
 function formatShiftTimeForCell(startLocal, endLocal) {
   return { start: startLocal, end: endLocal };
+}
+
+function parseTimeToMinutes(hhmm) {
+  if (!hhmm || typeof hhmm !== "string") return null;
+  const [hh, mm] = hhmm.split(":").map((p) => Number(p));
+  if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
+  return hh * 60 + mm;
+}
+
+function computeDurationMinutes(startLocal, endLocal) {
+  const start = parseTimeToMinutes(startLocal);
+  const end = parseTimeToMinutes(endLocal);
+  if (start == null || end == null) return null;
+  let diff = end - start;
+  if (diff <= 0) diff += 24 * 60;
+  return diff;
+}
+
+function buildLocalStartIso(day, startLocal) {
+  const { year, monthIndex } = state.monthMeta;
+  const [hh, mm] = (startLocal || "00:00").split(":");
+  const month = String(monthIndex + 1).padStart(2, "0");
+  const dayStr = String(day).padStart(2, "0");
+
+  const offsetMinAbs = Math.abs(LOCAL_TZ_OFFSET_MIN);
+  const offSign = LOCAL_TZ_OFFSET_MIN >= 0 ? "+" : "-";
+  const offHH = String(Math.floor(offsetMinAbs / 60)).padStart(2, "0");
+  const offMM = String(offsetMinAbs % 60).padStart(2, "0");
+
+  return `${year}-${month}-${dayStr}T${hh}:${mm}:00${offSign}${offHH}:${offMM}`;
 }
 
 // -----------------------------
@@ -455,9 +493,7 @@ function bindHistoryControls() {
   }
 
   if (btnSavePyrusEl) {
-    btnSavePyrusEl.addEventListener("click", () => {
-      alert("Отправка в Pyrus появится после подключения API.");
-    });
+    btnSavePyrusEl.addEventListener("click", handleSaveToPyrus);
   }
 }
 
@@ -573,6 +609,7 @@ function getQuickModeShift(line) {
     startLocal,
     endLocal,
     amount: Number(amount || 0),
+    templateId: tmpl?.id ?? null,
   };
 }
 
@@ -621,6 +658,119 @@ function logChange({
 
   persistChangeHistory();
   renderChangeLog();
+}
+
+function shiftsEqual(a, b) {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  const normalizeAmount = (val) => Number(val || 0);
+  const normalizeTemplate = (val) => (val != null ? Number(val) : null);
+
+  return (
+    (a.startLocal || "") === (b.startLocal || "") &&
+    (a.endLocal || "") === (b.endLocal || "") &&
+    normalizeAmount(a.amount) === normalizeAmount(b.amount) &&
+    normalizeTemplate(a.templateId) === normalizeTemplate(b.templateId)
+  );
+}
+
+function buildPyrusChangesPayload() {
+  const result = {
+    create: { task: [] },
+    deleted: { task: [] },
+    edit: { task: [] },
+  };
+
+  for (const line of ["L1", "L2"]) {
+    const baseSched = state.originalScheduleByLine[line];
+    const currentSched = state.scheduleByLine[line];
+    if (!currentSched || !currentSched.days || !currentSched.rows) continue;
+
+    const baseRowByEmployee = Object.create(null);
+    if (baseSched && Array.isArray(baseSched.rows)) {
+      for (const row of baseSched.rows) {
+        baseRowByEmployee[row.employeeId] = row;
+      }
+    }
+
+    currentSched.rows.forEach((row) => {
+      const baseRow = baseRowByEmployee[row.employeeId];
+
+      currentSched.days.forEach((day, idx) => {
+        const baseShift = baseRow ? baseRow.shiftsByDay[idx] || null : null;
+        const currentShift = row.shiftsByDay[idx] || null;
+
+        if (!baseShift && !currentShift) return;
+
+        if (!baseShift && currentShift) {
+          const duration = computeDurationMinutes(
+            currentShift.startLocal,
+            currentShift.endLocal
+          );
+          if (duration == null) return;
+
+          result.create.task.push({
+            employee_id: row.employeeId,
+            item_id: currentShift.templateId ?? null,
+            start: buildLocalStartIso(day, currentShift.startLocal),
+            duration,
+            amount: Number(currentShift.amount || 0),
+          });
+          return;
+        }
+
+        if (baseShift && !currentShift) {
+          if (baseShift.taskId) {
+            result.deleted.task.push({ task_id: baseShift.taskId });
+          }
+          return;
+        }
+
+        if (baseShift && currentShift && !shiftsEqual(baseShift, currentShift)) {
+          const duration = computeDurationMinutes(
+            currentShift.startLocal,
+            currentShift.endLocal
+          );
+          if (duration == null) return;
+
+          result.edit.task.push({
+            task_id: baseShift.taskId,
+            employee_id: row.employeeId,
+            item_id: currentShift.templateId ?? baseShift.templateId ?? null,
+            start: buildLocalStartIso(day, currentShift.startLocal),
+            duration,
+            amount: Number(currentShift.amount || 0),
+          });
+        }
+      });
+    });
+  }
+
+  return result;
+}
+
+async function handleSaveToPyrus() {
+  if (!btnSavePyrusEl) return;
+
+  const payload = buildPyrusChangesPayload();
+  btnSavePyrusEl.disabled = true;
+  btnSavePyrusEl.textContent = "Сохранение...";
+
+  try {
+    const meta = {
+      line: state.ui.currentLine,
+      month: state.monthMeta.monthIndex + 1,
+      year: state.monthMeta.year,
+    };
+    await callGraphApi("pyrus_save", { changes: payload, meta });
+    alert("Изменения отправлены в Pyrus.");
+  } catch (err) {
+    console.error("handleSaveToPyrus error", err);
+    alert(`Не удалось отправить в Pyrus: ${err.message || err}`);
+  } finally {
+    btnSavePyrusEl.disabled = false;
+    btnSavePyrusEl.textContent = "Сохранить в Pyrus";
+  }
 }
 
 function renderChangeLog() {
@@ -676,7 +826,7 @@ function renderChangeLog() {
 
 function handleShiftCellClick({ line, row, day, dayIndex, shift, cellEl }) {
   if (state.quickMode.enabled) {
-    const { startLocal, endLocal, amount } = getQuickModeShift(line);
+    const { startLocal, endLocal, amount, templateId } = getQuickModeShift(line);
 
     if (!startLocal || !endLocal) {
       alert(
@@ -697,7 +847,7 @@ function handleShiftCellClick({ line, row, day, dayIndex, shift, cellEl }) {
         : null;
 
     const key = `${line}-${year}-${monthIndex + 1}-${row.employeeId}-${day}`;
-    state.localChanges[key] = { startLocal, endLocal, amount };
+    state.localChanges[key] = { startLocal, endLocal, amount, templateId };
     persistLocalChanges();
 
     applyLocalChangesToSchedule();
@@ -932,6 +1082,7 @@ async function reloadScheduleForCurrentMonth() {
       startLocal: shiftTimes.start,
       endLocal: shiftTimes.end,
       amount,
+      templateId: shiftItemId,
       taskId: task.id,
       rawDueValue: dueField.value,
       rawDuration: Number(dueField.duration || 0),
@@ -965,6 +1116,7 @@ async function reloadScheduleForCurrentMonth() {
     scheduleByLine[line] = { monthKey, days, rows };
   }
 
+  state.originalScheduleByLine = deepClone(scheduleByLine);
   state.scheduleByLine = scheduleByLine;
   applyLocalChangesToSchedule();
   renderScheduleCurrentLine();
@@ -1166,6 +1318,7 @@ function openShiftPopover(context, anchorEl) {
   const { year, monthIndex } = state.monthMeta;
   const date = new Date(year, monthIndex, day);
   const hasShift = Boolean(shift);
+  let selectedTemplateId = shift?.templateId ?? null;
 
   const dateLabel = `${String(day).padStart(2, "0")}.${String(
     monthIndex + 1
@@ -1313,6 +1466,8 @@ function openShiftPopover(context, anchorEl) {
         const tmpl = templates.find((t) => t.id === id);
         if (!tmpl) return;
 
+        selectedTemplateId = id;
+
         if (tmpl.timeRange) {
           const startInput = document.getElementById("shift-start-input");
           const endInput = document.getElementById("shift-end-input");
@@ -1342,7 +1497,14 @@ function openShiftPopover(context, anchorEl) {
       const amount = Number(amountInput.value || 0);
 
       const key = `${line}-${year}-${monthIndex + 1}-${employeeId}-${day}`;
-      state.localChanges[key] = { startLocal: start, endLocal: end, amount };
+      const templateId =
+        selectedTemplateId != null ? selectedTemplateId : shift?.templateId;
+      state.localChanges[key] = {
+        startLocal: start,
+        endLocal: end,
+        amount,
+        templateId,
+      };
       persistLocalChanges();
 
       applyLocalChangesToSchedule();
@@ -1392,11 +1554,15 @@ function applyLocalChangesToSchedule() {
             startLocal: change.startLocal,
             endLocal: change.endLocal,
             amount: Number(change.amount || 0),
+            templateId: change.templateId ?? null,
           };
         } else {
           row.shiftsByDay[idx].startLocal = change.startLocal;
           row.shiftsByDay[idx].endLocal = change.endLocal;
           row.shiftsByDay[idx].amount = Number(change.amount || 0);
+          if (change.templateId != null) {
+            row.shiftsByDay[idx].templateId = change.templateId;
+          }
         }
       });
     }
