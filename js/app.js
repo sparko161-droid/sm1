@@ -41,6 +41,7 @@ const state = {
   },
   ui: {
     currentLine: "L1",
+    theme: "dark",
   },
   quickMode: {
     enabled: false,
@@ -62,6 +63,7 @@ const state = {
     L2: { monthKey: null, days: [], rows: [] },
   },
   localChanges: {},
+  changeHistory: [],
   monthMeta: {
     year: null,
     monthIndex: null,
@@ -71,6 +73,12 @@ const state = {
 const scheduleCacheByLine = {
   L1: Object.create(null),
   L2: Object.create(null),
+};
+
+const STORAGE_KEYS = {
+  localChanges: "sm1_local_changes",
+  changeHistory: "sm1_change_history",
+  theme: "sm1_theme_preference",
 };
 
 // -----------------------------
@@ -214,6 +222,8 @@ const btnLineL1El = $("#btn-line-l1");
 const btnLineL2El = $("#btn-line-l2");
 const btnPrevMonthEl = $("#btn-prev-month");
 const btnNextMonthEl = $("#btn-next-month");
+const btnThemeToggleEl = $("#btn-theme-toggle");
+const btnSavePyrusEl = $("#btn-save-pyrus");
 
 const scheduleRootEl = $("#schedule-root");
 const quickTemplateSelectEl = $("#quick-template-select");
@@ -221,6 +231,8 @@ const quickTimeFromInputEl = $("#quick-time-from");
 const quickTimeToInputEl = $("#quick-time-to");
 const quickAmountInputEl = $("#quick-amount");
 const quickModeToggleEl = $("#quick-mode-toggle");
+const changeLogListEl = $("#change-log-list");
+const btnClearHistoryEl = $("#btn-clear-history");
 
 // поповер смены
 let shiftPopoverEl = null;
@@ -232,10 +244,14 @@ let shiftPopoverKeydownHandler = null;
 // -----------------------------
 
 function init() {
+  hydrateLocalState();
+  initTheme();
   initMonthMetaToToday();
   bindLoginForm();
   bindTopBarButtons();
+  bindHistoryControls();
   createShiftPopover();
+  renderChangeLog();
 }
 
 function getCurrentLineTemplates() {
@@ -266,6 +282,75 @@ function updateMonthLabel() {
     "Декабрь",
   ];
   currentMonthLabelEl.textContent = `${monthNames[monthIndex]} ${year}`;
+}
+
+function hydrateLocalState() {
+  try {
+    const rawChanges = localStorage.getItem(STORAGE_KEYS.localChanges);
+    if (rawChanges) {
+      state.localChanges = JSON.parse(rawChanges) || {};
+    }
+  } catch (err) {
+    console.warn("Не удалось восстановить локальные смены", err);
+  }
+
+  try {
+    const rawHistory = localStorage.getItem(STORAGE_KEYS.changeHistory);
+    if (rawHistory) {
+      state.changeHistory = JSON.parse(rawHistory) || [];
+    }
+  } catch (err) {
+    console.warn("Не удалось восстановить историю изменений", err);
+  }
+}
+
+function persistLocalChanges() {
+  try {
+    localStorage.setItem(STORAGE_KEYS.localChanges, JSON.stringify(state.localChanges));
+  } catch (err) {
+    console.warn("Не удалось сохранить локальные смены", err);
+  }
+}
+
+function persistChangeHistory() {
+  try {
+    localStorage.setItem(
+      STORAGE_KEYS.changeHistory,
+      JSON.stringify(state.changeHistory.slice(0, 300))
+    );
+  } catch (err) {
+    console.warn("Не удалось сохранить историю", err);
+  }
+}
+
+function initTheme() {
+  const storedTheme = localStorage.getItem(STORAGE_KEYS.theme);
+  const preferredTheme = storedTheme === "light" ? "light" : "dark";
+  applyTheme(preferredTheme);
+
+  if (btnThemeToggleEl) {
+    btnThemeToggleEl.addEventListener("click", () => {
+      const next = state.ui.theme === "dark" ? "light" : "dark";
+      applyTheme(next);
+    });
+  }
+}
+
+function applyTheme(theme) {
+  state.ui.theme = theme;
+  document.documentElement.setAttribute("data-theme", theme);
+  localStorage.setItem(STORAGE_KEYS.theme, theme);
+  updateThemeToggleUI();
+}
+
+function updateThemeToggleUI() {
+  if (!btnThemeToggleEl) return;
+  const isDark = state.ui.theme === "dark";
+  btnThemeToggleEl.textContent = isDark ? "🌙 Тема" : "☀️ Тема";
+  btnThemeToggleEl.setAttribute(
+    "aria-label",
+    isDark ? "Включена тёмная тема" : "Включена светлая тема"
+  );
 }
 
 // -----------------------------
@@ -347,6 +432,22 @@ function updateLineToggleUI() {
   } else {
     btnLineL1El.classList.remove("active");
     btnLineL2El.classList.add("active");
+  }
+}
+
+function bindHistoryControls() {
+  if (btnClearHistoryEl) {
+    btnClearHistoryEl.addEventListener("click", () => {
+      state.changeHistory = [];
+      persistChangeHistory();
+      renderChangeLog();
+    });
+  }
+
+  if (btnSavePyrusEl) {
+    btnSavePyrusEl.addEventListener("click", () => {
+      alert("Отправка в Pyrus появится после подключения API.");
+    });
   }
 }
 
@@ -465,7 +566,105 @@ function getQuickModeShift(line) {
   };
 }
 
-function handleShiftCellClick({ line, row, day, shift, cellEl }) {
+function logChange({
+  action,
+  line,
+  employeeId,
+  employeeName,
+  day,
+  previousShift,
+  nextShift,
+}) {
+  const { year, monthIndex } = state.monthMeta;
+  const date = `${year}-${String(monthIndex + 1).padStart(2, "0")}-${String(day).padStart(
+    2,
+    "0"
+  )}`;
+  const entry = {
+    id: `${Date.now()}-${Math.random()}`,
+    timestamp: new Date().toISOString(),
+    action,
+    line,
+    employeeId,
+    employeeName,
+    date,
+    previousShift: previousShift
+      ? {
+          startLocal: previousShift.startLocal || "",
+          endLocal: previousShift.endLocal || "",
+          amount: Number(previousShift.amount || 0),
+        }
+      : null,
+    nextShift: nextShift
+      ? {
+          startLocal: nextShift.startLocal || "",
+          endLocal: nextShift.endLocal || "",
+          amount: Number(nextShift.amount || 0),
+        }
+      : null,
+  };
+
+  state.changeHistory.unshift(entry);
+  if (state.changeHistory.length > 300) {
+    state.changeHistory.length = 300;
+  }
+
+  persistChangeHistory();
+  renderChangeLog();
+}
+
+function renderChangeLog() {
+  if (!changeLogListEl) return;
+
+  changeLogListEl.innerHTML = "";
+
+  if (!state.changeHistory.length) {
+    changeLogListEl.textContent = "Пока нет локальных изменений";
+    changeLogListEl.classList.add("change-log-empty");
+    return;
+  }
+
+  changeLogListEl.classList.remove("change-log-empty");
+  const actionLabels = {
+    create: "Добавлена смена",
+    update: "Изменена смена",
+    delete: "Удалена смена",
+  };
+
+  const formatShift = (shift) => {
+    if (!shift) return "—";
+    const amountLabel = shift.amount ? `${shift.amount.toLocaleString("ru-RU")} ₽` : "";
+    return `${shift.startLocal}–${shift.endLocal}${amountLabel ? ` · ${amountLabel}` : ""}`;
+  };
+
+  state.changeHistory.forEach((entry) => {
+    const wrapper = document.createElement("div");
+    wrapper.className = "change-log-entry";
+
+    const title = document.createElement("div");
+    const actionLabel = actionLabels[entry.action] || "Изменение";
+    const time = new Date(entry.timestamp).toLocaleTimeString("ru-RU", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    title.textContent = `${actionLabel} • ${entry.date} • ${time}`;
+
+    const details = document.createElement("div");
+    details.textContent = `${entry.employeeName} (${entry.line})`;
+
+    const shiftLine = document.createElement("div");
+    shiftLine.textContent = `Было: ${formatShift(entry.previousShift)} → Стало: ${formatShift(
+      entry.nextShift
+    )}`;
+
+    wrapper.appendChild(title);
+    wrapper.appendChild(details);
+    wrapper.appendChild(shiftLine);
+    changeLogListEl.appendChild(wrapper);
+  });
+}
+
+function handleShiftCellClick({ line, row, day, dayIndex, shift, cellEl }) {
   if (state.quickMode.enabled) {
     const { startLocal, endLocal, amount } = getQuickModeShift(line);
 
@@ -477,11 +676,31 @@ function handleShiftCellClick({ line, row, day, shift, cellEl }) {
     }
 
     const { year, monthIndex } = state.monthMeta;
+    const sched = state.scheduleByLine[line];
+    const resolvedDayIndex =
+      typeof dayIndex === "number" && dayIndex >= 0
+        ? dayIndex
+        : sched?.days?.indexOf(day);
+    const previousShift =
+      resolvedDayIndex != null && resolvedDayIndex >= 0
+        ? row.shiftsByDay[resolvedDayIndex]
+        : null;
+
     const key = `${line}-${year}-${monthIndex + 1}-${row.employeeId}-${day}`;
     state.localChanges[key] = { startLocal, endLocal, amount };
+    persistLocalChanges();
 
     applyLocalChangesToSchedule();
     renderScheduleCurrentLine();
+    logChange({
+      action: previousShift ? "update" : "create",
+      line,
+      employeeId: row.employeeId,
+      employeeName: row.employeeName,
+      day,
+      previousShift: previousShift || null,
+      nextShift: { startLocal, endLocal, amount },
+    });
     return;
   }
 
@@ -776,19 +995,25 @@ function renderScheduleCurrentLine() {
 
   const weekdayNames = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
   const { year, monthIndex } = state.monthMeta;
+  const weekendDays = new Set();
 
   for (const day of days) {
     const date = new Date(year, monthIndex, day);
     const weekday = weekdayNames[(date.getDay() + 6) % 7];
+    const isWeekend = weekday === "Сб" || weekday === "Вс";
 
     const th1 = document.createElement("th");
     th1.textContent = String(day);
+    if (isWeekend) th1.classList.add("day-off");
     headRow1.appendChild(th1);
 
     const th2 = document.createElement("th");
     th2.textContent = weekday;
     th2.className = "weekday-header";
-    if (weekday === "Сб" || weekday === "Вс") th2.classList.add("day-off");
+    if (isWeekend) {
+      th2.classList.add("day-off");
+      weekendDays.add(day);
+    }
     headRow2.appendChild(th2);
   }
 
@@ -821,6 +1046,9 @@ function renderScheduleCurrentLine() {
     row.shiftsByDay.forEach((shift, dayIndex) => {
       const td = document.createElement("td");
       td.className = "shift-cell";
+      if (weekendDays.has(sched.days[dayIndex])) {
+        td.classList.add("day-off");
+      }
 
       if (shift) {
         td.classList.add("has-shift");
@@ -857,6 +1085,7 @@ function renderScheduleCurrentLine() {
           line,
           row,
           day: sched.days[dayIndex],
+          dayIndex,
           shift: shift || null,
           cellEl: td,
         });
@@ -926,6 +1155,7 @@ function openShiftPopover(context, anchorEl) {
   const { line, employeeId, employeeName, day, shift } = context;
   const { year, monthIndex } = state.monthMeta;
   const date = new Date(year, monthIndex, day);
+  const hasShift = Boolean(shift);
 
   const dateLabel = `${String(day).padStart(2, "0")}.${String(
     monthIndex + 1
@@ -994,6 +1224,9 @@ function openShiftPopover(context, anchorEl) {
     </div>
 
     <div class="shift-popover-footer">
+      <button class="btn danger" type="button" id="shift-btn-delete" ${
+        hasShift ? "" : "disabled"
+      }>Удалить</button>
       <button class="btn" type="button" id="shift-btn-cancel">Отмена</button>
       <button class="btn primary" type="button" id="shift-btn-save">Сохранить локально</button>
     </div>
@@ -1039,6 +1272,28 @@ function openShiftPopover(context, anchorEl) {
     .querySelector("#shift-btn-cancel")
     .addEventListener("click", closeShiftPopover);
 
+  const deleteBtn = shiftPopoverEl.querySelector("#shift-btn-delete");
+  if (deleteBtn) {
+    deleteBtn.addEventListener("click", () => {
+      const key = `${line}-${year}-${monthIndex + 1}-${employeeId}-${day}`;
+      state.localChanges[key] = { deleted: true };
+      persistLocalChanges();
+
+      applyLocalChangesToSchedule();
+      renderScheduleCurrentLine();
+      logChange({
+        action: "delete",
+        line,
+        employeeId,
+        employeeName,
+        day,
+        previousShift: shift || null,
+        nextShift: null,
+      });
+      closeShiftPopover();
+    });
+  }
+
   // выбор шаблона
   shiftPopoverEl
     .querySelectorAll(".shift-template-pill")
@@ -1078,9 +1333,19 @@ function openShiftPopover(context, anchorEl) {
 
       const key = `${line}-${year}-${monthIndex + 1}-${employeeId}-${day}`;
       state.localChanges[key] = { startLocal: start, endLocal: end, amount };
+      persistLocalChanges();
 
       applyLocalChangesToSchedule();
       renderScheduleCurrentLine();
+      logChange({
+        action: shift ? "update" : "create",
+        line,
+        employeeId,
+        employeeName,
+        day,
+        previousShift: shift || null,
+        nextShift: { startLocal: start, endLocal: end, amount },
+      });
       closeShiftPopover();
     });
 
@@ -1105,18 +1370,23 @@ function applyLocalChangesToSchedule() {
           monthIndex + 1
         }-${row.employeeId}-${day}`;
         const change = state.localChanges[key];
-        if (!change) return;
+        if (!change || typeof change !== "object") return;
+
+        if (change.deleted) {
+          row.shiftsByDay[idx] = null;
+          return;
+        }
 
         if (!row.shiftsByDay[idx]) {
           row.shiftsByDay[idx] = {
             startLocal: change.startLocal,
             endLocal: change.endLocal,
-            amount: change.amount,
+            amount: Number(change.amount || 0),
           };
         } else {
           row.shiftsByDay[idx].startLocal = change.startLocal;
           row.shiftsByDay[idx].endLocal = change.endLocal;
-          row.shiftsByDay[idx].amount = change.amount;
+          row.shiftsByDay[idx].amount = Number(change.amount || 0);
         }
       });
     }
