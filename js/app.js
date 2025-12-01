@@ -287,7 +287,7 @@ let shiftPopoverKeydownHandler = null;
 // -----------------------------
 
 function init() {
-  hydrateLocalState();
+  resetLocalEditingState();
   initTheme();
   initMonthMetaToToday();
   bindLoginForm();
@@ -327,23 +327,15 @@ function updateMonthLabel() {
   currentMonthLabelEl.textContent = `${monthNames[monthIndex]} ${year}`;
 }
 
-function hydrateLocalState() {
-  try {
-    const rawChanges = localStorage.getItem(STORAGE_KEYS.localChanges);
-    if (rawChanges) {
-      state.localChanges = JSON.parse(rawChanges) || {};
-    }
-  } catch (err) {
-    console.warn("Не удалось восстановить локальные смены", err);
-  }
+function resetLocalEditingState() {
+  state.localChanges = {};
+  state.changeHistory = [];
 
   try {
-    const rawHistory = localStorage.getItem(STORAGE_KEYS.changeHistory);
-    if (rawHistory) {
-      state.changeHistory = JSON.parse(rawHistory) || [];
-    }
+    localStorage.removeItem(STORAGE_KEYS.localChanges);
+    localStorage.removeItem(STORAGE_KEYS.changeHistory);
   } catch (err) {
-    console.warn("Не удалось восстановить историю изменений", err);
+    console.warn("Не удалось сбросить локальные данные", err);
   }
 }
 
