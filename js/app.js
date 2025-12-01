@@ -593,6 +593,11 @@ async function loadShiftsCatalog() {
 
     const timeRange = parseShiftTimeRangeString(timeRaw);
 
+    const normalizedName = String(name || "").trim().toUpperCase();
+    const specialShortLabel = ["ВЫХ", "ОТП", "ДР"].includes(normalizedName)
+      ? normalizedName
+      : null;
+
     const template = {
       id: item.item_id,
       name,
@@ -600,6 +605,7 @@ async function loadShiftsCatalog() {
       amount,
       dept,
       timeRange,
+      specialShortLabel,
     };
 
     const deptUpper = dept.toUpperCase();
@@ -671,6 +677,18 @@ async function reloadScheduleForCurrentMonth() {
     else if (dept.includes("L1") && dept.includes("L2")) line = "L1";
     else continue;
 
+    const shiftItemId =
+      shiftCatalog.item_id != null ? shiftCatalog.item_id : shiftCatalog.id;
+
+    const matchingTemplate =
+      shiftItemId != null && line
+        ? (state.shiftTemplatesByLine[line] || []).find(
+            (t) => t.id === shiftItemId
+          )
+        : null;
+    const specialShortLabel =
+      (matchingTemplate && matchingTemplate.specialShortLabel) || null;
+
     const amount =
       typeof moneyField.value === "number"
         ? moneyField.value
@@ -689,6 +707,7 @@ async function reloadScheduleForCurrentMonth() {
       rawDueValue: dueField.value,
       rawDuration: Number(dueField.duration || 0),
       rawShift: shiftCatalog,
+      specialShortLabel,
     };
   }
 
@@ -808,16 +827,24 @@ function renderScheduleCurrentLine() {
         const pill = document.createElement("div");
         pill.className = "shift-pill";
 
-        const line1 = document.createElement("div");
-        line1.className = "shift-time-line start";
-        line1.textContent = shift.startLocal;
+        if (shift.specialShortLabel) {
+          pill.classList.add("special");
+          const label = document.createElement("div");
+          label.className = "shift-special-label";
+          label.textContent = shift.specialShortLabel;
+          pill.appendChild(label);
+        } else {
+          const line1 = document.createElement("div");
+          line1.className = "shift-time-line start";
+          line1.textContent = shift.startLocal;
 
-        const line2 = document.createElement("div");
-        line2.className = "shift-time-line end";
-        line2.textContent = shift.endLocal;
+          const line2 = document.createElement("div");
+          line2.className = "shift-time-line end";
+          line2.textContent = shift.endLocal;
 
-        pill.appendChild(line1);
-        pill.appendChild(line2);
+          pill.appendChild(line1);
+          pill.appendChild(line2);
+        }
         td.appendChild(pill);
 
         totalAmount += shift.amount || 0;
@@ -825,19 +852,7 @@ function renderScheduleCurrentLine() {
         td.classList.add("empty-shift");
       }
 
-      td.addEventListener("click", (event) => {
-        handleShiftCellClick({
-          line,
-          row,
-          day: sched.days[dayIndex],
-          shift: shift || null,
-          cellEl: td,
-          event,
-        });
-      });
-
-      td.addEventListener("contextmenu", (event) => {
-        event.preventDefault();
+      td.addEventListener("click", () => {
         openShiftPopover(
           {
             line,
