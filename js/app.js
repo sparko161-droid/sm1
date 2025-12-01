@@ -42,6 +42,13 @@ const state = {
   ui: {
     currentLine: "L1",
   },
+  quickMode: {
+    enabled: false,
+    templateId: null,
+    timeFrom: "",
+    timeTo: "",
+    amount: "",
+  },
   employeesByLine: {
     L1: [],
     L2: [],
@@ -209,6 +216,11 @@ const btnPrevMonthEl = $("#btn-prev-month");
 const btnNextMonthEl = $("#btn-next-month");
 
 const scheduleRootEl = $("#schedule-root");
+const quickTemplateSelectEl = $("#quick-template-select");
+const quickTimeFromInputEl = $("#quick-time-from");
+const quickTimeToInputEl = $("#quick-time-to");
+const quickAmountInputEl = $("#quick-amount");
+const quickModeToggleEl = $("#quick-mode-toggle");
 
 // поповер смены
 let shiftPopoverEl = null;
@@ -224,6 +236,10 @@ function init() {
   bindLoginForm();
   bindTopBarButtons();
   createShiftPopover();
+}
+
+function getCurrentLineTemplates() {
+  return state.shiftTemplatesByLine[state.ui.currentLine] || [];
 }
 
 function initMonthMetaToToday() {
@@ -289,12 +305,14 @@ function bindTopBarButtons() {
   btnLineL1El.addEventListener("click", () => {
     state.ui.currentLine = "L1";
     updateLineToggleUI();
+    renderQuickTemplateOptions();
     renderScheduleCurrentLine();
   });
 
   btnLineL2El.addEventListener("click", () => {
     state.ui.currentLine = "L2";
     updateLineToggleUI();
+    renderQuickTemplateOptions();
     renderScheduleCurrentLine();
   });
 
@@ -332,6 +350,153 @@ function updateLineToggleUI() {
   }
 }
 
+function initQuickAssignPanel() {
+  renderQuickTemplateOptions();
+  syncQuickPanelInputs();
+  updateQuickModeToggleUI();
+
+  quickTemplateSelectEl?.addEventListener("change", () => {
+    const val = quickTemplateSelectEl.value;
+    state.quickMode.templateId = val ? Number(val) : null;
+
+    const tmpl = getCurrentLineTemplates().find(
+      (t) => t.id === state.quickMode.templateId
+    );
+    if (tmpl?.timeRange) {
+      state.quickMode.timeFrom = tmpl.timeRange.start;
+      state.quickMode.timeTo = tmpl.timeRange.end;
+      syncQuickPanelInputs();
+    }
+    if (tmpl && typeof tmpl.amount === "number") {
+      state.quickMode.amount = tmpl.amount;
+      syncQuickPanelInputs();
+    }
+  });
+
+  quickTimeFromInputEl?.addEventListener("input", (e) => {
+    state.quickMode.timeFrom = e.target.value;
+  });
+
+  quickTimeToInputEl?.addEventListener("input", (e) => {
+    state.quickMode.timeTo = e.target.value;
+  });
+
+  quickAmountInputEl?.addEventListener("input", (e) => {
+    state.quickMode.amount = e.target.value;
+  });
+
+  quickModeToggleEl?.addEventListener("click", () => {
+    state.quickMode.enabled = !state.quickMode.enabled;
+    updateQuickModeToggleUI();
+  });
+}
+
+function renderQuickTemplateOptions() {
+  if (!quickTemplateSelectEl) return;
+
+  const currentLineTemplates = getCurrentLineTemplates();
+  const prevSelected = state.quickMode.templateId;
+
+  quickTemplateSelectEl.innerHTML = "";
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Шаблон не выбран";
+  quickTemplateSelectEl.appendChild(placeholder);
+
+  currentLineTemplates.forEach((tmpl) => {
+    const option = document.createElement("option");
+    option.value = String(tmpl.id);
+    const timeLabel = tmpl.timeRange
+      ? ` (${tmpl.timeRange.start}–${tmpl.timeRange.end})`
+      : "";
+    option.textContent = `${tmpl.name}${timeLabel}`;
+    quickTemplateSelectEl.appendChild(option);
+  });
+
+  const hasPrev = currentLineTemplates.some((t) => t.id === prevSelected);
+  quickTemplateSelectEl.value = hasPrev ? String(prevSelected) : "";
+  state.quickMode.templateId = hasPrev ? prevSelected : null;
+}
+
+function syncQuickPanelInputs() {
+  if (quickTimeFromInputEl) {
+    quickTimeFromInputEl.value = state.quickMode.timeFrom || "";
+  }
+  if (quickTimeToInputEl) {
+    quickTimeToInputEl.value = state.quickMode.timeTo || "";
+  }
+  if (quickAmountInputEl) {
+    quickAmountInputEl.value =
+      state.quickMode.amount !== undefined && state.quickMode.amount !== null
+        ? state.quickMode.amount
+        : "";
+  }
+}
+
+function updateQuickModeToggleUI() {
+  if (!quickModeToggleEl) return;
+  quickModeToggleEl.classList.toggle("active", state.quickMode.enabled);
+  quickModeToggleEl.textContent = state.quickMode.enabled
+    ? "Быстрое назначение: Вкл"
+    : "Быстрое назначение";
+}
+
+function getQuickModeShift(line) {
+  const templates = state.shiftTemplatesByLine[line] || [];
+  const tmpl = templates.find((t) => t.id === state.quickMode.templateId);
+
+  let startLocal = state.quickMode.timeFrom;
+  let endLocal = state.quickMode.timeTo;
+
+  if ((!startLocal || !endLocal) && tmpl?.timeRange) {
+    startLocal = tmpl.timeRange.start;
+    endLocal = tmpl.timeRange.end;
+  }
+
+  let amount = state.quickMode.amount;
+  if (amount === "" || amount === undefined || amount === null) {
+    amount = tmpl?.amount ?? 0;
+  }
+
+  return {
+    startLocal,
+    endLocal,
+    amount: Number(amount || 0),
+  };
+}
+
+function handleShiftCellClick({ line, row, day, shift, cellEl }) {
+  if (state.quickMode.enabled) {
+    const { startLocal, endLocal, amount } = getQuickModeShift(line);
+
+    if (!startLocal || !endLocal) {
+      alert(
+        "Укажите время начала и конца смены в панели быстрого назначения."
+      );
+      return;
+    }
+
+    const { year, monthIndex } = state.monthMeta;
+    const key = `${line}-${year}-${monthIndex + 1}-${row.employeeId}-${day}`;
+    state.localChanges[key] = { startLocal, endLocal, amount };
+
+    applyLocalChangesToSchedule();
+    renderScheduleCurrentLine();
+    return;
+  }
+
+  openShiftPopover(
+    {
+      line,
+      employeeId: row.employeeId,
+      employeeName: row.employeeName,
+      day,
+      shift: shift || null,
+    },
+    cellEl
+  );
+}
+
 // -----------------------------
 // Загрузка данных
 // -----------------------------
@@ -340,6 +505,7 @@ async function loadInitialData() {
   try {
     await loadEmployees();
     await loadShiftsCatalog();
+    initQuickAssignPanel();
     await reloadScheduleForCurrentMonth();
   } catch (err) {
     console.error("loadInitialData error:", err);
@@ -659,7 +825,19 @@ function renderScheduleCurrentLine() {
         td.classList.add("empty-shift");
       }
 
-      td.addEventListener("click", () => {
+      td.addEventListener("click", (event) => {
+        handleShiftCellClick({
+          line,
+          row,
+          day: sched.days[dayIndex],
+          shift: shift || null,
+          cellEl: td,
+          event,
+        });
+      });
+
+      td.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
         openShiftPopover(
           {
             line,
