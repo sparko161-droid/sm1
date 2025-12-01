@@ -167,6 +167,10 @@ function formatShiftTimeForCell(startLocal, endLocal) {
 // -----------------------------
 
 async function callGraphApi(type, payload) {
+  if (!type) {
+    throw new Error("callGraphApi: не указан тип хука");
+  }
+
   const res = await fetch(GRAPH_HOOK_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -214,6 +218,7 @@ const loginFormEl = $("#login-form");
 const loginInputEl = $("#login-input");
 const passwordInputEl = $("#password-input");
 const loginErrorEl = $("#login-error");
+const loginButtonEl = $("#login-button");
 
 const currentUserLabelEl = $("#current-user-label");
 const currentMonthLabelEl = $("#current-month-label");
@@ -358,11 +363,13 @@ function updateThemeToggleUI() {
 // -----------------------------
 
 function bindLoginForm() {
-  loginFormEl.addEventListener("submit", async (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     loginErrorEl.textContent = "";
-    const btn = loginFormEl.querySelector("button[type=submit]");
-    btn.disabled = true;
+
+    if (!loginFormEl) return;
+    const btn = loginFormEl.querySelector("button[type=submit]") || loginButtonEl;
+    if (btn) btn.disabled = true;
 
     const login = loginInputEl.value.trim();
     const password = passwordInputEl.value;
@@ -381,9 +388,12 @@ function bindLoginForm() {
       console.error("Auth error:", err);
       loginErrorEl.textContent = err.message || "Ошибка авторизации";
     } finally {
-      btn.disabled = false;
+      if (btn) btn.disabled = false;
     }
-  });
+  };
+
+  loginFormEl?.addEventListener("submit", handleLogin);
+  loginButtonEl?.addEventListener("click", handleLogin);
 }
 
 function bindTopBarButtons() {
