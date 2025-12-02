@@ -43,6 +43,7 @@ const state = {
   ui: {
     currentLine: "L1",
     theme: "dark",
+    deptFilter: "ALL",
   },
   quickMode: {
     enabled: false,
@@ -55,6 +56,7 @@ const state = {
     L1: [],
     L2: [],
   },
+  employeeDeptGroupById: {},
   shiftTemplatesByLine: {
     L1: [],
     L2: [],
@@ -278,6 +280,10 @@ const currentMonthLabelEl = $("#current-month-label");
 
 const btnLineL1El = $("#btn-line-l1");
 const btnLineL2El = $("#btn-line-l2");
+const btnDeptAllEl = $("#btn-dept-all");
+const btnDeptOvEl = $("#btn-dept-ov");
+const btnDeptOpEl = $("#btn-dept-op");
+const btnDeptOuEl = $("#btn-dept-ou");
 const btnPrevMonthEl = $("#btn-prev-month");
 const btnNextMonthEl = $("#btn-next-month");
 const btnThemeToggleEl = $("#btn-theme-toggle");
@@ -491,7 +497,40 @@ function bindTopBarButtons() {
     reloadScheduleForCurrentMonth();
   });
 
+  if (btnDeptAllEl) {
+    btnDeptAllEl.addEventListener("click", () => {
+      state.ui.deptFilter = "ALL";
+      updateDeptFilterUI();
+      renderScheduleCurrentLine();
+    });
+  }
+
+  if (btnDeptOvEl) {
+    btnDeptOvEl.addEventListener("click", () => {
+      state.ui.deptFilter = "OV";
+      updateDeptFilterUI();
+      renderScheduleCurrentLine();
+    });
+  }
+
+  if (btnDeptOpEl) {
+    btnDeptOpEl.addEventListener("click", () => {
+      state.ui.deptFilter = "OP";
+      updateDeptFilterUI();
+      renderScheduleCurrentLine();
+    });
+  }
+
+  if (btnDeptOuEl) {
+    btnDeptOuEl.addEventListener("click", () => {
+      state.ui.deptFilter = "OU";
+      updateDeptFilterUI();
+      renderScheduleCurrentLine();
+    });
+  }
+
   updateLineToggleUI();
+  updateDeptFilterUI();
 
   // Отображение легенды цветов при переключении линии
   if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
@@ -507,6 +546,27 @@ function updateLineToggleUI() {
   } else {
     btnLineL1El.classList.remove("active");
     btnLineL2El.classList.add("active");
+  }
+}
+
+function updateDeptFilterUI() {
+  const filter = state.ui.deptFilter || "ALL";
+
+  const buttons = [
+    { key: "ALL", el: btnDeptAllEl },
+    { key: "OV", el: btnDeptOvEl },
+    { key: "OP", el: btnDeptOpEl },
+    { key: "OU", el: btnDeptOuEl },
+  ];
+
+  buttons.forEach(({ el }) => {
+    if (!el) return;
+    el.classList.remove("active");
+  });
+
+  const active = buttons.find((b) => b.key === filter);
+  if (active && active.el) {
+    active.el.classList.add("active");
   }
 }
 
@@ -1106,54 +1166,102 @@ async function loadInitialData() {
   }
 }
 
+
 async function loadEmployees() {
   const raw = await pyrusApi("/v4/members", "GET");
   const data = unwrapPyrusData(raw);
 
+  const members = data.members || [];
+
   if (data.employeesByLine) {
+    // Если backend уже прислал готовое разбиение по линиям — используем его как есть.
     state.employeesByLine.L1 = data.employeesByLine.L1 || [];
     state.employeesByLine.L2 = data.employeesByLine.L2 || [];
+  } else {
+    const employeesByLine = { L1: [], L2: [] };
+
+    for (const m of members) {
+      if (m.banned) continue;
+
+      const deptName = (m.department_name || "").toLowerCase();
+      const position = (m.position || "").toLowerCase();
+
+      const isL1 =
+        deptName.includes("оператор") ||
+        deptName.includes("контакт-центр") ||
+        position.includes("оператор");
+
+      const isL2 =
+        deptName.includes("инженер") ||
+        deptName.includes("техпод") ||
+        deptName.includes("техническая поддержка") ||
+        position.includes("инженер");
+
+      const employee = {
+        id: m.id,
+        fullName: `${m.last_name || ""} ${m.first_name || ""}`.trim(),
+        email: m.email || "",
+        departmentName: m.department_name || "",
+        position: m.position || "",
+      };
+
+      if (isL1) employeesByLine.L1.push(employee);
+      if (isL2) employeesByLine.L2.push(employee);
+    }
+
+    const sortEmployees = (arr) =>
+      arr.sort((a, b) => a.fullName.localeCompare(b.fullName, "ru"));
+
+    state.employeesByLine.L1 = sortEmployees(employeesByLine.L1);
+    state.employeesByLine.L2 = sortEmployees(employeesByLine.L2);
+  }
+
+  // Независимо от того, как определили линии, считаем группы отделов ОВ/ОП/ОУ.
+  buildDeptGroupsFromMembers(members);
+}
+
+
+
+function buildDeptGroupsFromMembers(members) {
+  const map = {};
+
+  if (!Array.isArray(members)) {
+    state.employeeDeptGroupById = map;
     return;
   }
 
-  const members = data.members || [];
-  const employeesByLine = { L1: [], L2: [] };
-
   for (const m of members) {
-    if (m.banned) continue;
+    if (!m || m.banned) continue;
+    const id = m.id;
+    if (id == null) continue;
 
-    const deptName = (m.department_name || "").toLowerCase();
-    const position = (m.position || "").toLowerCase();
+    const deptName = String(m.department_name || "").toLowerCase();
+    const position = String(m.position || "").toLowerCase();
 
-    const isL1 =
-      deptName.includes("оператор") ||
-      deptName.includes("контакт-центр") ||
-      position.includes("оператор");
+    let group = null;
 
-    const isL2 =
-      deptName.includes("инженер") ||
-      deptName.includes("техпод") ||
-      deptName.includes("техническая поддержка") ||
-      position.includes("инженер");
+    const isDeptVnedrenie = deptName.includes("внедрен"); // Отдел внедрения
+    const isDeptClient = deptName.includes("клиентск");   // Клиентский отдел
+    const isDeptHunter = deptName.includes("хантер");     // Хантер-менеджеры
+    const isDeptSales = deptName.includes("продаж");      // Отдел продаж
+    const isDeptFinance = deptName.includes("финанс");    // Отдел финансов
 
-    const employee = {
-      id: m.id,
-      fullName: `${m.last_name || ""} ${m.first_name || ""}`.trim(),
-      email: m.email || "",
-      departmentName: m.department_name || "",
-      position: m.position || "",
-    };
+    if (isDeptVnedrenie || position.includes("руководитель отдела внедрения")) {
+      group = "OV"; // Отдел внедрения
+    } else if (isDeptClient || isDeptHunter || isDeptSales) {
+      group = "OP"; // Отдел продаж
+    } else if (isDeptFinance) {
+      group = "OU"; // Отдел управления (финансы)
+    }
 
-    if (isL1) employeesByLine.L1.push(employee);
-    if (isL2) employeesByLine.L2.push(employee);
+    if (group) {
+      map[id] = group;
+    }
   }
 
-  const sortEmployees = (arr) =>
-    arr.sort((a, b) => a.fullName.localeCompare(b.fullName, "ru"));
-
-  state.employeesByLine.L1 = sortEmployees(employeesByLine.L1);
-  state.employeesByLine.L2 = sortEmployees(employeesByLine.L2);
+  state.employeeDeptGroupById = map;
 }
+
 
 async function loadShiftsCatalog() {
   const raw = await pyrusApi("/v4/catalogs/281369", "GET");
@@ -1322,6 +1430,8 @@ async function reloadScheduleForCurrentMonth() {
     days.push(d);
   }
 
+  const deptGroupById = state.employeeDeptGroupById || {};
+
   for (const line of ["L1", "L2"]) {
     const empList = state.employeesByLine[line] || [];
     const map = shiftMapByLine[line];
@@ -1334,6 +1444,7 @@ async function reloadScheduleForCurrentMonth() {
       return {
         employeeId: emp.id,
         employeeName: emp.fullName,
+        deptGroup: deptGroupById[emp.id] || null,
         shiftsByDay,
       };
     });
@@ -1362,7 +1473,19 @@ function renderScheduleCurrentLine() {
   }
 
   const canEdit = canEditLine(line);
-  const { days, rows } = sched;
+  const { days } = sched;
+  let rows = sched.rows || [];
+
+  const deptFilter = state.ui.deptFilter || "ALL";
+  if (deptFilter !== "ALL") {
+    rows = rows.filter((row) => row.deptGroup === deptFilter);
+  }
+
+  if (!rows.length) {
+    scheduleRootEl.innerHTML =
+      '<div style="padding: 12px; font-size: 13px; color: var(--text-muted);">Нет сотрудников для выбранного фильтра.</div>';
+    return;
+  }
 
   const table = document.createElement("table");
   table.className = "schedule-table";

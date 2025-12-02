@@ -305,6 +305,13 @@ body {
   gap: 8px;
 }
 
+.dept-switcher {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+}
+
 .month-switcher {
   display: flex;
   align-items: center;
