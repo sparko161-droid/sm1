@@ -8,6 +8,7 @@
  * - Pyrus API через n8n /graph (type: "pyrus_api")
  * - Кеширование данных смен в памяти
  * - UI: таблица, ховер строки, анимация ячеек, компактный поповер смены
+ * - Система прав доступа: edit/view для L1 и L2
  */
 
 const GRAPH_HOOK_URL = "https://jolikcisout.beget.app/webhook/pyrus/graph";
@@ -87,6 +88,24 @@ const STORAGE_KEYS = {
 
 function deepClone(obj) {
   return JSON.parse(JSON.stringify(obj));
+}
+
+// -----------------------------
+// Проверка прав доступа
+// -----------------------------
+
+function canEditLine(line) {
+  const permission = state.auth.permissions[line];
+  return permission === "edit";
+}
+
+function canViewLine(line) {
+  const permission = state.auth.permissions[line];
+  return permission === "view" || permission === "edit";
+}
+
+function getCurrentLinePermission() {
+  return state.auth.permissions[state.ui.currentLine];
 }
 
 // -----------------------------
@@ -426,6 +445,8 @@ function bindTopBarButtons() {
   btnLineL1El.addEventListener("click", () => {
     state.ui.currentLine = "L1";
     updateLineToggleUI();
+    updateSaveButtonState();
+    updateQuickModeForLine();
     renderQuickTemplateOptions();
     renderScheduleCurrentLine();
   });
@@ -433,6 +454,8 @@ function bindTopBarButtons() {
   btnLineL2El.addEventListener("click", () => {
     state.ui.currentLine = "L2";
     updateLineToggleUI();
+    updateSaveButtonState();
+    updateQuickModeForLine();
     renderQuickTemplateOptions();
     renderScheduleCurrentLine();
   });
@@ -521,6 +544,13 @@ function initQuickAssignPanel() {
   });
 
   quickModeToggleEl?.addEventListener("click", () => {
+    const currentLine = state.ui.currentLine;
+    
+    if (!canEditLine(currentLine)) {
+      alert(`У вас нет прав на редактирование линии ${currentLine}`);
+      return;
+    }
+    
     state.quickMode.enabled = !state.quickMode.enabled;
     updateQuickModeToggleUI();
   });
@@ -574,6 +604,75 @@ function updateQuickModeToggleUI() {
   quickModeToggleEl.textContent = state.quickMode.enabled
     ? "Быстрое назначение: Вкл"
     : "Быстрое назначение";
+}
+
+function updateQuickModeForLine() {
+  const currentLine = state.ui.currentLine;
+  const canEdit = canEditLine(currentLine);
+  
+  if (!canEdit && state.quickMode.enabled) {
+    state.quickMode.enabled = false;
+    updateQuickModeToggleUI();
+  }
+  
+  if (quickModeToggleEl) {
+    quickModeToggleEl.disabled = !canEdit;
+    quickModeToggleEl.title = canEdit 
+      ? "Включить быстрое назначение смен"
+      : `Нет прав на редактирование ${currentLine}`;
+  }
+  
+  if (quickTemplateSelectEl) {
+    quickTemplateSelectEl.disabled = !canEdit;
+  }
+  
+  if (quickTimeFromInputEl) {
+    quickTimeFromInputEl.disabled = !canEdit;
+  }
+  
+  if (quickTimeToInputEl) {
+    quickTimeToInputEl.disabled = !canEdit;
+  }
+  
+  if (quickAmountInputEl) {
+    quickAmountInputEl.disabled = !canEdit;
+  }
+}
+
+function countChangesForLine(line) {
+  const { year, monthIndex } = state.monthMeta;
+  let count = 0;
+  
+  const prefix = `${line}-${year}-${monthIndex + 1}-`;
+  for (const key in state.localChanges) {
+    if (key.startsWith(prefix)) {
+      count++;
+    }
+  }
+  
+  return count;
+}
+
+function updateSaveButtonState() {
+  if (!btnSavePyrusEl) return;
+  
+  const currentLine = state.ui.currentLine;
+  const canEdit = canEditLine(currentLine);
+  const changesCount = countChangesForLine(currentLine);
+  
+  if (!canEdit) {
+    btnSavePyrusEl.textContent = `Нет прав на ${currentLine}`;
+    btnSavePyrusEl.disabled = true;
+    btnSavePyrusEl.title = `У вас только просмотр для линии ${currentLine}`;
+  } else if (changesCount === 0) {
+    btnSavePyrusEl.textContent = `Нет изменений (${currentLine})`;
+    btnSavePyrusEl.disabled = true;
+    btnSavePyrusEl.title = `Нет несохранённых изменений для линии ${currentLine}`;
+  } else {
+    btnSavePyrusEl.textContent = `Сохранить ${currentLine} (${changesCount})`;
+    btnSavePyrusEl.disabled = false;
+    btnSavePyrusEl.title = `Сохранить ${changesCount} изменений для линии ${currentLine}`;
+  }
 }
 
 function getQuickModeShift(line) {
@@ -646,6 +745,7 @@ function logChange({
 
   persistChangeHistory();
   renderChangeLog();
+  updateSaveButtonState();
 }
 
 function shiftsEqual(a, b) {
@@ -679,14 +779,16 @@ function shiftsEqual(a, b) {
   );
 }
 
-function buildPyrusChangesPayload() {
+function buildPyrusChangesPayload(lineToSave = null) {
   const result = {
     create: { task: [] },
     deleted: { task: [] },
     edit: { task: [] },
   };
 
-  for (const line of ["L1", "L2"]) {
+  const linesToProcess = lineToSave ? [lineToSave] : ["L1", "L2"];
+
+  for (const line of linesToProcess) {
     const baseSched = state.originalScheduleByLine[line];
     const currentSched = state.scheduleByLine[line];
     if (!currentSched || !currentSched.days || !currentSched.rows) continue;
@@ -771,18 +873,55 @@ function buildPyrusChangesPayload() {
 async function handleSaveToPyrus() {
   if (!btnSavePyrusEl) return;
 
-  const payload = buildPyrusChangesPayload();
+  const currentLine = state.ui.currentLine;
+  
+  if (!canEditLine(currentLine)) {
+    alert(`У вас нет прав на сохранение изменений для линии ${currentLine}`);
+    return;
+  }
+
+  const payload = buildPyrusChangesPayload(currentLine);
+  
+  const hasChanges = 
+    payload.create.task.length > 0 ||
+    payload.deleted.task.length > 0 ||
+    payload.edit.task.length > 0;
+  
+  if (!hasChanges) {
+    alert(`Нет изменений для сохранения в линии ${currentLine}`);
+    return;
+  }
+  
   btnSavePyrusEl.disabled = true;
   btnSavePyrusEl.textContent = "Сохранение...";
 
   try {
     const meta = {
-      line: state.ui.currentLine,
+      line: currentLine,
       month: state.monthMeta.monthIndex + 1,
       year: state.monthMeta.year,
     };
+    
     await callGraphApi("pyrus_save", { changes: payload, meta });
-    alert("Изменения отправлены в Pyrus.");
+    
+    alert(`Изменения для линии ${currentLine} успешно отправлены в Pyrus.\n` +
+          `Создано: ${payload.create.task.length}\n` +
+          `Изменено: ${payload.edit.task.length}\n` +
+          `Удалено: ${payload.deleted.task.length}`);
+    
+    state.originalScheduleByLine[currentLine] = deepClone(state.scheduleByLine[currentLine]);
+    
+    const { year, monthIndex } = state.monthMeta;
+    const prefix = `${currentLine}-${year}-${monthIndex + 1}-`;
+    for (const key in state.localChanges) {
+      if (key.startsWith(prefix)) {
+        delete state.localChanges[key];
+      }
+    }
+    persistLocalChanges();
+    
+    updateSaveButtonState();
+    
   } catch (err) {
     console.error("handleSaveToPyrus error", err);
     alert(`Не удалось отправить в Pyrus: ${err.message || err}`);
@@ -844,6 +983,20 @@ function renderChangeLog() {
 }
 
 function handleShiftCellClick({ line, row, day, dayIndex, shift, cellEl }) {
+  if (!canEditLine(line)) {
+    openShiftPopoverReadOnly(
+      {
+        line,
+        employeeId: row.employeeId,
+        employeeName: row.employeeName,
+        day,
+        shift: shift || null,
+      },
+      cellEl
+    );
+    return;
+  }
+
   if (state.quickMode.enabled) {
     const { startLocal, endLocal, amount, templateId } = getQuickModeShift(line);
 
@@ -914,6 +1067,8 @@ async function loadInitialData() {
     await loadShiftsCatalog();
     initQuickAssignPanel();
     await reloadScheduleForCurrentMonth();
+    updateSaveButtonState();
+    updateQuickModeForLine();
   } catch (err) {
     console.error("loadInitialData error:", err);
     alert(`Ошибка загрузки данных: ${err.message || err}`);
@@ -1170,10 +1325,15 @@ function renderScheduleCurrentLine() {
     return;
   }
 
+  const canEdit = canEditLine(line);
   const { days, rows } = sched;
 
   const table = document.createElement("table");
   table.className = "schedule-table";
+  
+  if (!canEdit) {
+    table.classList.add("read-only-mode");
+  }
 
   const thead = document.createElement("thead");
   const headRow1 = document.createElement("tr");
@@ -1347,6 +1507,98 @@ function closeShiftPopover() {
   }, 140);
 }
 
+function openShiftPopoverReadOnly(context, anchorEl) {
+  const { line, employeeName, day, shift } = context;
+  const { year, monthIndex } = state.monthMeta;
+  
+  const dateLabel = `${String(day).padStart(2, "0")}.${String(
+    monthIndex + 1
+  ).padStart(2, "0")}.${year}`;
+
+  shiftPopoverEl.innerHTML = `
+    <div class="shift-popover-header">
+      <div>
+        <div class="shift-popover-title">${employeeName}</div>
+        <div class="shift-popover-subtitle">${dateLabel} • Линия ${line} (только просмотр)</div>
+      </div>
+      <button class="shift-popover-close" type="button">✕</button>
+    </div>
+
+    <div class="shift-popover-body">
+      ${shift ? `
+        <div class="shift-popover-section">
+          <div class="shift-popover-section-title">Информация о смене</div>
+          
+          <div class="field-row">
+            <label>Начало:</label>
+            <div>${shift.startLocal || "—"}</div>
+          </div>
+
+          <div class="field-row">
+            <label>Окончание:</label>
+            <div>${shift.endLocal || "—"}</div>
+          </div>
+
+          <div class="field-row">
+            <label>Сумма:</label>
+            <div>${shift.amount ? shift.amount.toLocaleString('ru-RU') + ' ₽' : "—"}</div>
+          </div>
+        </div>
+      ` : `
+        <div class="shift-popover-note">
+          Смена не назначена. У вас нет прав на редактирование.
+        </div>
+      `}
+    </div>
+
+    <div class="shift-popover-footer">
+      <button class="btn" type="button" id="shift-btn-close-readonly">Закрыть</button>
+    </div>
+  `;
+
+  shiftPopoverBackdropEl.classList.remove("hidden");
+  shiftPopoverEl.classList.remove("hidden");
+
+  const rect = anchorEl.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+
+  const estimatedWidth = 420;
+  const estimatedHeight = 260;
+
+  let left = rect.left + 8;
+  let top = rect.bottom + 8;
+
+  if (left + estimatedWidth > viewportWidth - 16) {
+    left = viewportWidth - estimatedWidth - 16;
+  }
+  if (top + estimatedHeight > viewportHeight - 16) {
+    top = rect.top - estimatedHeight - 8;
+  }
+
+  left = Math.max(left, 16);
+  top = Math.max(top, 16);
+
+  shiftPopoverEl.style.left = `${left}px`;
+  shiftPopoverEl.style.top = `${top}px`;
+
+  requestAnimationFrame(() => {
+    shiftPopoverEl.classList.add("open");
+  });
+
+  shiftPopoverEl
+    .querySelector(".shift-popover-close")
+    .addEventListener("click", closeShiftPopover);
+  shiftPopoverEl
+    .querySelector("#shift-btn-close-readonly")
+    .addEventListener("click", closeShiftPopover);
+
+  shiftPopoverKeydownHandler = (e) => {
+    if (e.key === "Escape") closeShiftPopover();
+  };
+  document.addEventListener("keydown", shiftPopoverKeydownHandler);
+}
+
 function openShiftPopover(context, anchorEl) {
   const { line, employeeId, employeeName, day, shift } = context;
   const { year, monthIndex } = state.monthMeta;
@@ -1432,7 +1684,6 @@ function openShiftPopover(context, anchorEl) {
   shiftPopoverBackdropEl.classList.remove("hidden");
   shiftPopoverEl.classList.remove("hidden");
 
-  // позиционируем поповер рядом с ячейкой
   const rect = anchorEl.getBoundingClientRect();
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
@@ -1456,12 +1707,10 @@ function openShiftPopover(context, anchorEl) {
   shiftPopoverEl.style.left = `${left}px`;
   shiftPopoverEl.style.top = `${top}px`;
 
-  // маленькая «пружинка» при открытии
   requestAnimationFrame(() => {
     shiftPopoverEl.classList.add("open");
   });
 
-  // закрытие
   shiftPopoverEl
     .querySelector(".shift-popover-close")
     .addEventListener("click", closeShiftPopover);
@@ -1491,7 +1740,6 @@ function openShiftPopover(context, anchorEl) {
     });
   }
 
-  // выбор шаблона
   shiftPopoverEl
     .querySelectorAll(".shift-template-pill")
     .forEach((btn) => {
@@ -1518,7 +1766,6 @@ function openShiftPopover(context, anchorEl) {
       });
     });
 
-  // сохранение в локальный кэш
   shiftPopoverEl
     .querySelector("#shift-btn-save")
     .addEventListener("click", () => {
@@ -1559,14 +1806,12 @@ function openShiftPopover(context, anchorEl) {
       closeShiftPopover();
     });
 
-  // esc для закрытия
   shiftPopoverKeydownHandler = (e) => {
     if (e.key === "Escape") closeShiftPopover();
   };
   document.addEventListener("keydown", shiftPopoverKeydownHandler);
 }
 
-// применяем локальные изменения к расписанию
 function applyLocalChangesToSchedule() {
   for (const line of ["L1", "L2"]) {
     const sched = state.scheduleByLine[line];
@@ -1618,9 +1863,5 @@ function applyLocalChangesToSchedule() {
     }
   }
 }
-
-// -----------------------------
-// Старт
-// -----------------------------
 
 document.addEventListener("DOMContentLoaded", init);
