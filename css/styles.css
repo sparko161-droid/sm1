@@ -27,10 +27,27 @@
   --pill-bg: rgba(200, 0, 0, 0.08);
   --pill-border: rgba(200, 0, 0, 0.35);
   --pill-text: #222222;
-  --pill-l1-bg: rgba(200, 0, 0, 0.08);
-  --pill-l1-border: rgba(200, 0, 0, 0.4);
-  --pill-l2-bg: rgba(245, 158, 11, 0.12);
-  --pill-l2-border: rgba(217, 119, 6, 0.4);
+  
+  /* Цвета для L1 смен - светлая тема */
+  --shift-l1-morning-bg: rgba(220, 38, 38, 0.12);    /* Красный - утро */
+  --shift-l1-morning-border: rgba(220, 38, 38, 0.45);
+  --shift-l1-day-bg: rgba(234, 88, 12, 0.12);        /* Оранжевый - день */
+  --shift-l1-day-border: rgba(234, 88, 12, 0.45);
+  --shift-l1-night-bg: rgba(139, 92, 246, 0.12);     /* Фиолетовый - ночь */
+  --shift-l1-night-border: rgba(139, 92, 246, 0.45);
+  
+  /* Цвета для L2 смен - светлая тема */
+  --shift-l2-morning-bg: rgba(37, 99, 235, 0.12);    /* Синий - утро */
+  --shift-l2-morning-border: rgba(37, 99, 235, 0.45);
+  --shift-l2-day-bg: rgba(22, 163, 74, 0.12);        /* Зелёный - день */
+  --shift-l2-day-border: rgba(22, 163, 74, 0.45);
+  --shift-l2-night-bg: rgba(120, 53, 15, 0.12);      /* Коричневый - ночь */
+  --shift-l2-night-border: rgba(120, 53, 15, 0.45);
+  
+  /* Специальные смены (ВЫХ, ОТП, ДР) */
+  --shift-special-bg: rgba(234, 179, 8, 0.12);
+  --shift-special-border: rgba(234, 179, 8, 0.5);
+  
   --weekend-bg: rgba(200, 0, 0, 0.12);
   --weekend-strong: rgba(200, 0, 0, 0.25);
   --shadow-strong: 0 6px 20px rgba(0, 0, 0, 0.06);
@@ -70,10 +87,27 @@ body.dark-theme {
   --pill-bg: rgba(255, 75, 75, 0.12);
   --pill-border: rgba(255, 75, 75, 0.4);
   --pill-text: #f5f5f5;
-  --pill-l1-bg: rgba(255, 75, 75, 0.12);
-  --pill-l1-border: rgba(255, 75, 75, 0.45);
-  --pill-l2-bg: rgba(245, 158, 11, 0.15);
-  --pill-l2-border: rgba(250, 204, 21, 0.5);
+  
+  /* Цвета для L1 смен - тёмная тема */
+  --shift-l1-morning-bg: rgba(248, 113, 113, 0.15);
+  --shift-l1-morning-border: rgba(248, 113, 113, 0.5);
+  --shift-l1-day-bg: rgba(251, 146, 60, 0.15);
+  --shift-l1-day-border: rgba(251, 146, 60, 0.5);
+  --shift-l1-night-bg: rgba(167, 139, 250, 0.15);
+  --shift-l1-night-border: rgba(167, 139, 250, 0.5);
+  
+  /* Цвета для L2 смен - тёмная тема */
+  --shift-l2-morning-bg: rgba(96, 165, 250, 0.15);
+  --shift-l2-morning-border: rgba(96, 165, 250, 0.5);
+  --shift-l2-day-bg: rgba(74, 222, 128, 0.15);
+  --shift-l2-day-border: rgba(74, 222, 128, 0.5);
+  --shift-l2-night-bg: rgba(180, 83, 9, 0.15);
+  --shift-l2-night-border: rgba(180, 83, 9, 0.5);
+  
+  /* Специальные смены */
+  --shift-special-bg: rgba(250, 204, 21, 0.15);
+  --shift-special-border: rgba(250, 204, 21, 0.5);
+  
   --weekend-bg: rgba(255, 75, 75, 0.15);
   --weekend-strong: rgba(255, 75, 75, 0.28);
   --shadow-strong: 0 12px 40px rgba(0, 0, 0, 0.5);
@@ -478,6 +512,8 @@ body {
   gap: 2px;
   font-weight: 700;
   letter-spacing: 0.4px;
+  background: var(--shift-special-bg);
+  border-color: var(--shift-special-border);
 }
 
 .shift-special-label {
@@ -486,14 +522,36 @@ body {
   font-size: 11px;
 }
 
-.shift-pill.l1 {
-  background: var(--pill-l1-bg);
-  border-color: var(--pill-l1-border);
+/* Цвета для L1 смен по времени суток */
+.shift-pill.l1-morning {
+  background: var(--shift-l1-morning-bg);
+  border-color: var(--shift-l1-morning-border);
 }
 
-.shift-pill.l2 {
-  background: var(--pill-l2-bg);
-  border-color: var(--pill-l2-border);
+.shift-pill.l1-day {
+  background: var(--shift-l1-day-bg);
+  border-color: var(--shift-l1-day-border);
+}
+
+.shift-pill.l1-night {
+  background: var(--shift-l1-night-bg);
+  border-color: var(--shift-l1-night-border);
+}
+
+/* Цвета для L2 смен по времени суток */
+.shift-pill.l2-morning {
+  background: var(--shift-l2-morning-bg);
+  border-color: var(--shift-l2-morning-border);
+}
+
+.shift-pill.l2-day {
+  background: var(--shift-l2-day-bg);
+  border-color: var(--shift-l2-day-border);
+}
+
+.shift-pill.l2-night {
+  background: var(--shift-l2-night-bg);
+  border-color: var(--shift-l2-night-border);
 }
 
 .shift-cell .shift-pill:hover {
@@ -509,6 +567,101 @@ body {
 
 .schedule-table tr.row-hover td.day-off {
   background-color: var(--weekend-strong);
+}
+
+/* ===== Легенда цветов смен ===== */
+
+.shift-legend {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-alt);
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.shift-legend-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.shift-legend-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.shift-legend-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shift-legend-group-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.shift-legend-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.shift-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text);
+}
+
+.shift-legend-color {
+  width: 24px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid;
+}
+
+.shift-legend-color.l1-morning {
+  background: var(--shift-l1-morning-bg);
+  border-color: var(--shift-l1-morning-border);
+}
+
+.shift-legend-color.l1-day {
+  background: var(--shift-l1-day-bg);
+  border-color: var(--shift-l1-day-border);
+}
+
+.shift-legend-color.l1-night {
+  background: var(--shift-l1-night-bg);
+  border-color: var(--shift-l1-night-border);
+}
+
+.shift-legend-color.l2-morning {
+  background: var(--shift-l2-morning-bg);
+  border-color: var(--shift-l2-morning-border);
+}
+
+.shift-legend-color.l2-day {
+  background: var(--shift-l2-day-bg);
+  border-color: var(--shift-l2-day-border);
+}
+
+.shift-legend-color.l2-night {
+  background: var(--shift-l2-night-bg);
+  border-color: var(--shift-l2-night-border);
+}
+
+.shift-legend-color.special {
+  background: var(--shift-special-bg);
+  border-color: var(--shift-special-border);
 }
 
 /* ===== Скроллбар ===== */
