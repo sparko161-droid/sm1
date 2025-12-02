@@ -36,8 +36,12 @@ const state = {
   auth: {
     user: null,
     permissions: {
+      ALL: "view",
       L1: "view",
       L2: "view",
+      OV: "view",
+      OP: "view",
+      OU: "view",
     },
   },
   ui: {
@@ -60,6 +64,14 @@ const state = {
   shiftTemplatesByLine: {
     L1: [],
     L2: [],
+  },
+  shiftTemplatesByDept: {
+    ALL: [],
+    L1: [],
+    L2: [],
+    OV: [],
+    OP: [],
+    OU: [],
   },
   scheduleByLine: {
     L1: { monthKey: null, days: [], rows: [] },
@@ -96,18 +108,25 @@ function deepClone(obj) {
 // Проверка прав доступа
 // -----------------------------
 
-function canEditLine(line) {
-  const permission = state.auth.permissions[line];
+function getCurrentFilterKey() {
+  return state.ui.deptFilter || "ALL";
+}
+
+function canEditLine(_line) {
+  const key = getCurrentFilterKey();
+  const permission = state.auth.permissions && state.auth.permissions[key];
   return permission === "edit";
 }
 
-function canViewLine(line) {
-  const permission = state.auth.permissions[line];
+function canViewLine(_line) {
+  const key = getCurrentFilterKey();
+  const permission = state.auth.permissions && state.auth.permissions[key];
   return permission === "view" || permission === "edit";
 }
 
 function getCurrentLinePermission() {
-  return state.auth.permissions[state.ui.currentLine];
+  const key = getCurrentFilterKey();
+  return state.auth.permissions && state.auth.permissions[key];
 }
 
 // -----------------------------
@@ -250,7 +269,14 @@ async function auth(login, password) {
   }
 
   state.auth.user = result.user || null;
-  state.auth.permissions = result.permissions || { L1: "view", L2: "view" };
+  state.auth.permissions = result.permissions || {
+    ALL: "view",
+    L1: "view",
+    L2: "view",
+    OV: "view",
+    OP: "view",
+    OU: "view",
+  };
   return result;
 }
 
@@ -281,6 +307,8 @@ const currentMonthLabelEl = $("#current-month-label");
 const btnLineL1El = $("#btn-line-l1");
 const btnLineL2El = $("#btn-line-l2");
 const btnDeptAllEl = $("#btn-dept-all");
+const btnDeptL1El = $("#btn-dept-l1");
+const btnDeptL2El = $("#btn-dept-l2");
 const btnDeptOvEl = $("#btn-dept-ov");
 const btnDeptOpEl = $("#btn-dept-op");
 const btnDeptOuEl = $("#btn-dept-ou");
@@ -319,7 +347,13 @@ function init() {
 }
 
 function getCurrentLineTemplates() {
-  return state.shiftTemplatesByLine[state.ui.currentLine] || [];
+  const filterKey = getCurrentFilterKey();
+  const byDept = state.shiftTemplatesByDept || {};
+  if (filterKey && byDept[filterKey] && byDept[filterKey].length) {
+    return byDept[filterKey];
+  }
+  // запасной вариант — показываем общие шаблоны
+  return byDept.ALL || [];
 }
 
 function initMonthMetaToToday() {
@@ -453,6 +487,8 @@ function bindLoginForm() {
 }
 
 function bindTopBarButtons() {
+  // Переключение "технической" линии (L1/L2) оставляем как есть,
+  // но права и фильтрация теперь завязаны на deptFilter (ALL / L1 / L2 / OV / OP / OU).
   btnLineL1El.addEventListener("click", () => {
     state.ui.currentLine = "L1";
     updateLineToggleUI();
@@ -461,7 +497,7 @@ function bindTopBarButtons() {
     renderQuickTemplateOptions();
     renderScheduleCurrentLine();
     if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
-      ShiftColors.renderColorLegend(state.ui.currentLine);
+      ShiftColors.renderColorLegend(getCurrentFilterKey());
     }
   });
 
@@ -473,7 +509,7 @@ function bindTopBarButtons() {
     renderQuickTemplateOptions();
     renderScheduleCurrentLine();
     if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
-      ShiftColors.renderColorLegend(state.ui.currentLine);
+      ShiftColors.renderColorLegend(getCurrentFilterKey());
     }
   });
 
@@ -502,6 +538,31 @@ function bindTopBarButtons() {
       state.ui.deptFilter = "ALL";
       updateDeptFilterUI();
       renderScheduleCurrentLine();
+      if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
+        ShiftColors.renderColorLegend(getCurrentFilterKey());
+      }
+    });
+  }
+
+  if (btnDeptL1El) {
+    btnDeptL1El.addEventListener("click", () => {
+      state.ui.deptFilter = "L1";
+      updateDeptFilterUI();
+      renderScheduleCurrentLine();
+      if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
+        ShiftColors.renderColorLegend(getCurrentFilterKey());
+      }
+    });
+  }
+
+  if (btnDeptL2El) {
+    btnDeptL2El.addEventListener("click", () => {
+      state.ui.deptFilter = "L2";
+      updateDeptFilterUI();
+      renderScheduleCurrentLine();
+      if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
+        ShiftColors.renderColorLegend(getCurrentFilterKey());
+      }
     });
   }
 
@@ -510,6 +571,9 @@ function bindTopBarButtons() {
       state.ui.deptFilter = "OV";
       updateDeptFilterUI();
       renderScheduleCurrentLine();
+      if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
+        ShiftColors.renderColorLegend(getCurrentFilterKey());
+      }
     });
   }
 
@@ -518,6 +582,9 @@ function bindTopBarButtons() {
       state.ui.deptFilter = "OP";
       updateDeptFilterUI();
       renderScheduleCurrentLine();
+      if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
+        ShiftColors.renderColorLegend(getCurrentFilterKey());
+      }
     });
   }
 
@@ -526,15 +593,18 @@ function bindTopBarButtons() {
       state.ui.deptFilter = "OU";
       updateDeptFilterUI();
       renderScheduleCurrentLine();
+      if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
+        ShiftColors.renderColorLegend(getCurrentFilterKey());
+      }
     });
   }
 
   updateLineToggleUI();
   updateDeptFilterUI();
 
-  // Отображение легенды цветов при переключении линии
+  // Легенда цветов теперь тоже завязана на текущий фильтр
   if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
-    ShiftColors.renderColorLegend(state.ui.currentLine);
+    ShiftColors.renderColorLegend(getCurrentFilterKey());
   }
 }
 
@@ -554,6 +624,8 @@ function updateDeptFilterUI() {
 
   const buttons = [
     { key: "ALL", el: btnDeptAllEl },
+    { key: "L1", el: btnDeptL1El },
+    { key: "L2", el: btnDeptL2El },
     { key: "OV", el: btnDeptOvEl },
     { key: "OP", el: btnDeptOpEl },
     { key: "OU", el: btnDeptOuEl },
@@ -752,7 +824,7 @@ function updateSaveButtonState() {
 }
 
 function getQuickModeShift(line) {
-  const templates = state.shiftTemplatesByLine[line] || [];
+  const templates = getCurrentLineTemplates();
   const tmpl = templates.find((t) => t.id === state.quickMode.templateId);
 
   let startLocal = state.quickMode.timeFrom;
@@ -778,8 +850,8 @@ function getQuickModeShift(line) {
 }
 
 function resolveSpecialShortLabel(line, templateId) {
-  if (!line || templateId == null) return null;
-  const templates = state.shiftTemplatesByLine[line] || [];
+  if (templateId == null) return null;
+  const templates = getCurrentLineTemplates();
   const tmpl = templates.find((t) => t.id === templateId);
   return tmpl?.specialShortLabel || null;
 }
@@ -1158,7 +1230,7 @@ async function loadInitialData() {
 
     // Отображение легенды цветов после загрузки данных
     if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
-      ShiftColors.renderColorLegend(state.ui.currentLine);
+      ShiftColors.renderColorLegend(getCurrentFilterKey());
     }
   } catch (err) {
     console.error("loadInitialData error:", err);
@@ -1205,8 +1277,17 @@ async function loadEmployees() {
         position: m.position || "",
       };
 
-      if (isL1) employeesByLine.L1.push(employee);
-      if (isL2) employeesByLine.L2.push(employee);
+      // Никого не отбрасываем: каждый сотрудник попадёт хотя бы в одну линию.
+      if (isL1) {
+        employeesByLine.L1.push(employee);
+      }
+      if (isL2) {
+        employeesByLine.L2.push(employee);
+      }
+      if (!isL1 && !isL2) {
+        employeesByLine.L1.push(employee);
+        employeesByLine.L2.push(employee);
+      }
     }
 
     const sortEmployees = (arr) =>
@@ -1238,7 +1319,29 @@ function buildDeptGroupsFromMembers(members) {
     const deptName = String(m.department_name || "").toLowerCase();
     const position = String(m.position || "").toLowerCase();
 
-    let group = null;
+    const groups = new Set();
+
+    // Базовая группа: ВСЕ
+    groups.add("ALL");
+
+    // Линия 1 — операторы / контакт-центр
+    const isOperator =
+      deptName.includes("оператор") ||
+      deptName.includes("контакт") ||
+      position.includes("оператор");
+    if (isOperator) {
+      groups.add("L1");
+    }
+
+    // Линия 2 — инженеры / техподдержка
+    const isEngineerOrSupport =
+      deptName.includes("инженер") ||
+      deptName.includes("техпод") ||
+      deptName.includes("технической поддержки") ||
+      position.includes("инженер");
+    if (isEngineerOrSupport) {
+      groups.add("L2");
+    }
 
     const isDeptVnedrenie = deptName.includes("внедрен"); // Отдел внедрения
     const isDeptClient = deptName.includes("клиентск");   // Клиентский отдел
@@ -1247,21 +1350,22 @@ function buildDeptGroupsFromMembers(members) {
     const isDeptFinance = deptName.includes("финанс");    // Отдел финансов
 
     if (isDeptVnedrenie || position.includes("руководитель отдела внедрения")) {
-      group = "OV"; // Отдел внедрения
-    } else if (isDeptClient || isDeptHunter || isDeptSales) {
-      group = "OP"; // Отдел продаж
-    } else if (isDeptFinance) {
-      group = "OU"; // Отдел управления (финансы)
+      groups.add("OV"); // Отдел внедрения
     }
 
-    if (group) {
-      map[id] = group;
+    if (isDeptClient || isDeptHunter || isDeptSales) {
+      groups.add("OP"); // Отдел продаж
     }
+
+    if (isDeptFinance || position.includes("руководитель фин")) {
+      groups.add("OU"); // Отдел управления (финансы)
+    }
+
+    map[id] = Array.from(groups);
   }
 
   state.employeeDeptGroupById = map;
 }
-
 
 async function loadShiftsCatalog() {
   const raw = await pyrusApi("/v4/catalogs/281369", "GET");
@@ -1279,43 +1383,94 @@ async function loadShiftsCatalog() {
   });
 
   const idxName = colIndexByName["Название смены"];
-  const idxTime = colIndexByName["время смены"];
-  const idxAmount = colIndexByName["Сумма за смену"];
+  const idxTimeFrom = colIndexByName["Время начала"];
+  const idxTimeTo = colIndexByName["Время окончания"];
+  const idxAmount = colIndexByName["Сумма"];
   const idxDept = colIndexByName["Отдел"];
 
-  const templatesByLine = { L1: [], L2: [] };
+  const templatesByLine = {
+    L1: [],
+    L2: [],
+  };
+
+  const templatesByDept = {
+    ALL: [],
+    L1: [],
+    L2: [],
+    OV: [],
+    OP: [],
+    OU: [],
+  };
 
   for (const item of items) {
     const values = item.values || [];
-    const name = idxName != null ? values[idxName] : "";
-    const timeRaw = idxTime != null ? values[idxTime] : "";
-    const amount = idxAmount != null ? Number(values[idxAmount] || 0) : 0;
-    const dept = idxDept != null ? String(values[idxDept] || "") : "";
-
-    const timeRange = parseShiftTimeRangeString(timeRaw);
-
-    const normalizedName = String(name || "").trim().toUpperCase();
-    const specialShortLabel = ["ВЫХ", "ОТП", "ДР"].includes(normalizedName)
-      ? normalizedName
-      : null;
+    const name = values[idxName] || "";
+    const timeFrom = values[idxTimeFrom] || "";
+    const timeTo = values[idxTimeTo] || "";
+    const amount = Number(values[idxAmount] || 0);
+    const dept = values[idxDept] || "";
 
     const template = {
-      id: item.item_id,
+      id: item.id,
       name,
-      timeRaw,
+      timeRange:
+        timeFrom && timeTo
+          ? {
+              start: timeFrom,
+              end: timeTo,
+            }
+          : null,
       amount,
       dept,
-      timeRange,
-      specialShortLabel,
+      specialShortLabel: item.short_name || null,
     };
 
-    const deptUpper = dept.toUpperCase();
-    if (deptUpper.includes("L1")) templatesByLine.L1.push(template);
-    if (deptUpper.includes("L2")) templatesByLine.L2.push(template);
+    const deptUpper = String(dept || "").toUpperCase();
+
+    const groups = new Set();
+
+    if (deptUpper.includes("ВСЕ") || deptUpper.includes("ALL")) {
+      groups.add("ALL");
+    }
+    if (deptUpper.includes("L1")) {
+      groups.add("L1");
+    }
+    if (deptUpper.includes("L2")) {
+      groups.add("L2");
+    }
+    if (deptUpper.includes("ОВ")) {
+      groups.add("OV");
+    }
+    if (deptUpper.includes("ОП")) {
+      groups.add("OP");
+    }
+    if (deptUpper.includes("ОУ")) {
+      groups.add("OU");
+    }
+
+    // Если явно не указан отдел — считаем шаблон общим
+    if (groups.size === 0) {
+      groups.add("ALL");
+    }
+
+    groups.forEach((g) => {
+      if (templatesByDept[g]) {
+        templatesByDept[g].push(template);
+      }
+    });
+
+    // Для обратной совместимости с модулем цветов:
+    if (groups.has("L1") || groups.has("ALL")) {
+      templatesByLine.L1.push(template);
+    }
+    if (groups.has("L2") || groups.has("ALL")) {
+      templatesByLine.L2.push(template);
+    }
   }
 
   state.shiftTemplatesByLine.L1 = templatesByLine.L1;
   state.shiftTemplatesByLine.L2 = templatesByLine.L2;
+  state.shiftTemplatesByDept = templatesByDept;
 
   // Инициализация цветов смен
   if (typeof ShiftColors !== 'undefined' && ShiftColors.initialize) {
@@ -1378,24 +1533,29 @@ async function reloadScheduleForCurrentMonth() {
     if (!empId) continue;
 
     const shiftCatalog = shiftField.value || {};
-    const dept = String(
-      (shiftCatalog.values && shiftCatalog.values[4]) || ""
-    ).toUpperCase();
-
-    let line = null;
-    if (dept.includes("L1") && !dept.includes("L2")) line = "L1";
-    else if (dept.includes("L2") && !dept.includes("L1")) line = "L2";
-    else if (dept.includes("L1") && dept.includes("L2")) line = "L1";
-    else continue;
+    const deptRaw =
+      (shiftCatalog.values && shiftCatalog.values[4]) || shiftCatalog.dept || "";
+    const dept = String(deptRaw).toUpperCase();
 
     const shiftItemId =
       shiftCatalog.item_id != null ? shiftCatalog.item_id : shiftCatalog.id;
 
+    // Определяем, в какие "технические" линии (L1/L2) положить смену.
+    // Теперь мы никого не отбрасываем: если отдел не указан явно,
+    // кладём смену в обе линии.
+    const linesForShift = [];
+    if (dept.includes("L1")) linesForShift.push("L1");
+    if (dept.includes("L2")) linesForShift.push("L2");
+
+    if (!linesForShift.length) {
+      linesForShift.push("L1", "L2");
+    }
+
     const matchingTemplate =
-      shiftItemId != null && line
-        ? (state.shiftTemplatesByLine[line] || []).find(
-            (t) => t.id === shiftItemId
-          )
+      shiftItemId != null
+        ? (state.shiftTemplatesByLine.L1 || []).concat(
+            state.shiftTemplatesByLine.L2 || []
+          ).find((t) => t.id === shiftItemId)
         : null;
     const specialShortLabel =
       (matchingTemplate && matchingTemplate.specialShortLabel) || null;
@@ -1405,23 +1565,25 @@ async function reloadScheduleForCurrentMonth() {
         ? moneyField.value
         : Number(moneyField.value || 0);
 
-    const map = shiftMapByLine[line];
-    if (!map[empId]) map[empId] = {};
+    for (const line of linesForShift) {
+      const map = shiftMapByLine[line];
+      if (!map[empId]) map[empId] = {};
 
-    map[empId][d] = {
-      startLocal,
-      endLocal,
-      amount,
-      templateId: shiftItemId,
-      taskId: task.id,
-      rawDueValue: dueField.value,
-      rawDuration,
-      durationMinutes: rawDuration,
-      startUtcIso,
-      endUtcIso,
-      rawShift: shiftCatalog,
-      specialShortLabel,
-    };
+      map[empId][d] = {
+        startLocal,
+        endLocal,
+        amount,
+        templateId: shiftItemId,
+        taskId: task.id,
+        rawDueValue: dueField.value,
+        rawDuration,
+        durationMinutes: rawDuration,
+        startUtcIso,
+        endUtcIso,
+        rawShift: shiftCatalog,
+        specialShortLabel,
+      };
+    }
   }
 
   const days = [];
@@ -1430,7 +1592,7 @@ async function reloadScheduleForCurrentMonth() {
     days.push(d);
   }
 
-  const deptGroupById = state.employeeDeptGroupById || {};
+  const deptGroupsById = state.employeeDeptGroupById || {};
 
   for (const line of ["L1", "L2"]) {
     const empList = state.employeesByLine[line] || [];
@@ -1441,10 +1603,18 @@ async function reloadScheduleForCurrentMonth() {
         const shift = map && map[emp.id] && map[emp.id][d];
         return shift || null;
       });
+
+      const empGroups = deptGroupsById[emp.id];
+      const groupsArray = Array.isArray(empGroups)
+        ? empGroups.slice()
+        : empGroups
+        ? [empGroups]
+        : ["ALL"];
+
       return {
         employeeId: emp.id,
         employeeName: emp.fullName,
-        deptGroup: deptGroupById[emp.id] || null,
+        deptGroups: groupsArray,
         shiftsByDay,
       };
     });
@@ -1478,7 +1648,10 @@ function renderScheduleCurrentLine() {
 
   const deptFilter = state.ui.deptFilter || "ALL";
   if (deptFilter !== "ALL") {
-    rows = rows.filter((row) => row.deptGroup === deptFilter);
+    rows = rows.filter((row) => {
+      if (!row.deptGroups || !row.deptGroups.length) return false;
+      return row.deptGroups.includes(deptFilter);
+    });
   }
 
   if (!rows.length) {
@@ -1774,13 +1947,14 @@ function openShiftPopover(context, anchorEl) {
     monthIndex + 1
   ).padStart(2, "0")}.${year}`;
 
-  const templates = state.shiftTemplatesByLine[line] || [];
+  const templates = getCurrentLineTemplates();
+  const filterKey = getCurrentFilterKey();
 
   shiftPopoverEl.innerHTML = `
     <div class="shift-popover-header">
       <div>
         <div class="shift-popover-title">${employeeName}</div>
-        <div class="shift-popover-subtitle">${dateLabel} • Линия ${line}</div>
+        <div class="shift-popover-subtitle">${dateLabel} • Фильтр: ${filterKey}</div>
       </div>
       <button class="shift-popover-close" type="button">✕</button>
     </div>
