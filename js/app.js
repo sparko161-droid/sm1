@@ -1297,6 +1297,25 @@ async function loadEmployees() {
     state.employeesByLine.L2 = sortEmployees(employeesByLine.L2);
   }
 
+
+  // После формирования L1/L2 объединяем сотрудников в единый список,
+  // чтобы обе линии показывали один и тот же пул сотрудников.
+  const allById = Object.create(null);
+  for (const lineKey of ["L1", "L2"]) {
+    const list = state.employeesByLine[lineKey] || [];
+    for (const emp of list) {
+      if (!emp || emp.id == null) continue;
+      allById[emp.id] = emp;
+    }
+  }
+
+  const allEmployees = Object.values(allById).sort((a, b) =>
+    (a.fullName || "").localeCompare(b.fullName || "", "ru")
+  );
+
+  state.employeesByLine.L1 = allEmployees;
+  state.employeesByLine.L2 = allEmployees;
+
   // Независимо от того, как определили линии, считаем группы отделов ОВ/ОП/ОУ.
   buildDeptGroupsFromMembers(members);
 }
@@ -1318,28 +1337,32 @@ function buildDeptGroupsFromMembers(members) {
 
     const deptName = String(m.department_name || "").toLowerCase();
     const position = String(m.position || "").toLowerCase();
+    const deptId = m.department_id;
 
     const groups = new Set();
 
     // Базовая группа: ВСЕ
     groups.add("ALL");
 
-    // Линия 1 — операторы / контакт-центр
+    // Линия 1 — операторы / контакт-центр (по отделу / названию, но НЕ по должности инженера)
     const isOperator =
       deptName.includes("оператор") ||
-      deptName.includes("контакт") ||
-      position.includes("оператор");
+      deptName.includes("контакт");
+
     if (isOperator) {
       groups.add("L1");
     }
 
-    // Линия 2 — инженеры / техподдержка
-    const isEngineerOrSupport =
-      deptName.includes("инженер") ||
-      deptName.includes("техпод") ||
-      deptName.includes("технической поддержки") ||
-      position.includes("инженер");
-    if (isEngineerOrSupport) {
+    // Линия 2 — только по отделам, без анализа должности:
+    // Инженера 5/2, Инженера 2/2, Инженеры (ID: 171248779, 171248780, 108368026)
+    const isStrictL2Dept =
+      deptId === 171248779 ||
+      deptId === 171248780 ||
+      deptId === 108368026 ||
+      deptName.includes("инженера") ||
+      deptName.includes("инженеры");
+
+    if (isStrictL2Dept) {
       groups.add("L2");
     }
 
@@ -1410,8 +1433,11 @@ async function loadShiftsCatalog() {
     const amount = Number(values[idxAmount] || 0);
     const dept = values[idxDept] || "";
 
+    const templateId =
+      typeof item.id === "number" ? item.id : Number(item.id);
+
     const template = {
-      id: item.id,
+      id: templateId,
       name,
       timeRange:
         timeFrom && timeTo
@@ -1537,8 +1563,12 @@ async function reloadScheduleForCurrentMonth() {
       (shiftCatalog.values && shiftCatalog.values[4]) || shiftCatalog.dept || "";
     const dept = String(deptRaw).toUpperCase();
 
-    const shiftItemId =
+    const shiftItemIdRaw =
       shiftCatalog.item_id != null ? shiftCatalog.item_id : shiftCatalog.id;
+    const shiftItemId =
+      typeof shiftItemIdRaw === "number"
+        ? shiftItemIdRaw
+        : Number(shiftItemIdRaw);
 
     // Определяем, в какие "технические" линии (L1/L2) положить смену.
     // Теперь мы никого не отбрасываем: если отдел не указан явно,

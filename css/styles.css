@@ -1062,3 +1062,10 @@ body {
 .change-log-empty {
   color: var(--text-muted);
 }
+
+
+/* Скрываем старые переключатели L1/L2 — теперь есть единый список сотрудников и фильтры по отделам */
+#btn-line-l1,
+#btn-line-l2 {
+  display: none;
+}
