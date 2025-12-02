@@ -454,6 +454,9 @@ function bindTopBarButtons() {
     updateQuickModeForLine();
     renderQuickTemplateOptions();
     renderScheduleCurrentLine();
+    if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
+      ShiftColors.renderColorLegend(state.ui.currentLine);
+    }
   });
 
   btnLineL2El.addEventListener("click", () => {
@@ -463,6 +466,9 @@ function bindTopBarButtons() {
     updateQuickModeForLine();
     renderQuickTemplateOptions();
     renderScheduleCurrentLine();
+    if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
+      ShiftColors.renderColorLegend(state.ui.currentLine);
+    }
   });
 
   btnPrevMonthEl.addEventListener("click", () => {
@@ -1195,7 +1201,7 @@ async function loadShiftsCatalog() {
 
   // Инициализация цветов смен
   if (typeof ShiftColors !== 'undefined' && ShiftColors.initialize) {
-    ShiftColors.initialize(items, headers);
+    ShiftColors.initialize(state.shiftTemplatesByLine, state.ui.theme);
   }
 }
 
@@ -1433,7 +1439,7 @@ function renderScheduleCurrentLine() {
 
         // Применение цвета к pill
         if (typeof ShiftColors !== 'undefined' && ShiftColors.applyColorToPill && shift.templateId) {
-          ShiftColors.applyColorToPill(pill, shift.templateId);
+          ShiftColors.applyColorToPill(pill, shift.templateId, line);
         }
 
         if (shift.specialShortLabel) {

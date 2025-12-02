@@ -516,6 +516,11 @@ body {
   border-color: var(--shift-special-border);
 }
 
+/* Динамические цвета пилюль смен */
+.shift-pill[class*="shift-template-"] {
+  color: var(--pill-text);
+}
+
 .shift-special-label {
   text-align: center;
   text-transform: uppercase;
@@ -627,6 +632,11 @@ body {
   height: 16px;
   border-radius: 4px;
   border: 1px solid;
+}
+
+/* Динамические классы для легенды устанавливаются из shift-colors.js */
+.shift-legend-color[class*="shift-template-"] {
+  border-color: var(--border);
 }
 
 .shift-legend-color.l1-morning {
