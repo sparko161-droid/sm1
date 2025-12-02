@@ -1056,11 +1056,11 @@ async function reloadScheduleForCurrentMonth() {
     if (!dueField || !personField || !shiftField) continue;
 
     const rawDuration = Number(dueField.duration || 0);
-    const endUtcMs = new Date(dueField.value).getTime();
-    if (Number.isNaN(endUtcMs)) continue;
+    const startUtcMs = new Date(dueField.value).getTime();
+    if (Number.isNaN(startUtcMs)) continue;
 
-    const startUtcMs = endUtcMs - rawDuration * 60 * 1000;
     const startUtcIso = new Date(startUtcMs).toISOString();
+    const endUtcMs = startUtcMs + rawDuration * 60 * 1000;
     const endUtcIso = new Date(endUtcMs).toISOString();
 
     const range = convertUtcStartToLocalRange(startUtcIso, rawDuration);
