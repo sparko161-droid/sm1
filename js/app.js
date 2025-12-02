@@ -111,30 +111,25 @@ function convertUtcDueToLocalRange(utcIsoString, durationMinutes) {
   const utcDate = new Date(utcIsoString);
   if (Number.isNaN(utcDate.getTime())) return null;
 
-  const dueLocalMs =
-    utcDate.getTime() + LOCAL_TZ_OFFSET_MIN * 60 * 1000;
+  // Добавляем смещение вручную без применения Date конструктором
+  const dueLocalMs = utcDate.getTime() + LOCAL_TZ_OFFSET_MIN * 60 * 1000;
   const dueLocal = new Date(dueLocalMs);
 
-  const endMinutes = dueLocal.getHours() * 60 + dueLocal.getMinutes();
-  const { time: startLocal, dayShift } = addMinutesLocal(
-    endMinutes,
-    -(durationMinutes || 0)
-  );
-
-  const endHH = String(dueLocal.getHours()).padStart(2, "0");
-  const endMM = String(dueLocal.getMinutes()).padStart(2, "0");
+  // Используем UTC-методы для получения времени
+  const endHH = String(dueLocal.getUTCHours()).padStart(2, "0");
+  const endMM = String(dueLocal.getUTCMinutes()).padStart(2, "0");
   const endLocal = `${endHH}:${endMM}`;
 
-  const startDate = new Date(
-    dueLocal.getFullYear(),
-    dueLocal.getMonth(),
-    dueLocal.getDate()
-  );
-  startDate.setDate(startDate.getDate() + dayShift);
+  // Для начала смены вычитаем длительность
+  const endMinutes = dueLocal.getUTCHours() * 60 + dueLocal.getUTCMinutes();
+  const { time: startLocal, dayShift } = addMinutesLocal(endMinutes, -(durationMinutes || 0));
 
-  const y = startDate.getFullYear();
-  const m = String(startDate.getMonth() + 1).padStart(2, "0");
-  const d = String(startDate.getDate()).padStart(2, "0");
+  // Дата начала смены
+  const startDate = new Date(dueLocalMs);
+  startDate.setUTCDate(startDate.getUTCDate() + dayShift);
+  const y = startDate.getUTCFullYear();
+  const m = String(startDate.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(startDate.getUTCDate()).padStart(2, "0");
 
   return {
     localDateKey: `${y}-${m}-${d}`,
