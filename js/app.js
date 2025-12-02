@@ -135,16 +135,20 @@ function convertUtcStartToLocalRange(utcIsoString, durationMinutes) {
     startUtc.getTime() + LOCAL_TZ_OFFSET_MIN * 60 * 1000;
   const startLocalDate = new Date(startLocalMs);
 
-  const startHH = String(startLocalDate.getHours()).padStart(2, "0");
-  const startMM = String(startLocalDate.getMinutes()).padStart(2, "0");
+  const startHH = String(startLocalDate.getUTCHours()).padStart(2, "0");
+  const startMM = String(startLocalDate.getUTCMinutes()).padStart(2, "0");
   const startLocal = `${startHH}:${startMM}`;
 
-  const startMinutes = startLocalDate.getHours() * 60 + startLocalDate.getMinutes();
-  const { time: endLocal } = addMinutesLocal(startMinutes, durationMinutes || 0);
+  const startMinutes =
+    startLocalDate.getUTCHours() * 60 + startLocalDate.getUTCMinutes();
+  const { time: endLocal } = addMinutesLocal(
+    startMinutes,
+    durationMinutes || 0
+  );
 
-  const y = startLocalDate.getFullYear();
-  const m = String(startLocalDate.getMonth() + 1).padStart(2, "0");
-  const d = String(startLocalDate.getDate()).padStart(2, "0");
+  const y = startLocalDate.getUTCFullYear();
+  const m = String(startLocalDate.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(startLocalDate.getUTCDate()).padStart(2, "0");
 
   return {
     localDateKey: `${y}-${m}-${d}`,
@@ -1052,11 +1056,11 @@ async function reloadScheduleForCurrentMonth() {
     if (!dueField || !personField || !shiftField) continue;
 
     const rawDuration = Number(dueField.duration || 0);
-    const endUtcMs = new Date(dueField.value).getTime();
-    if (Number.isNaN(endUtcMs)) continue;
+    const startUtcMs = new Date(dueField.value).getTime();
+    if (Number.isNaN(startUtcMs)) continue;
 
-    const startUtcMs = endUtcMs - rawDuration * 60 * 1000;
     const startUtcIso = new Date(startUtcMs).toISOString();
+    const endUtcMs = startUtcMs + rawDuration * 60 * 1000;
     const endUtcIso = new Date(endUtcMs).toISOString();
 
     const range = convertUtcStartToLocalRange(startUtcIso, rawDuration);
