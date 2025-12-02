@@ -126,25 +126,47 @@ function addMinutesLocal(baseMinutes, delta) {
   return { time: `${hh}:${mm}`, dayShift };
 }
 
+/**
+ * Конвертирует UTC время из Pyrus API в локальное время GMT+4 для отображения в UI
+ * @param {string} utcIsoString - UTC время в ISO формате (например "2025-12-02T04:00:00.000Z")
+ * @param {number} durationMinutes - Длительность смены в минутах
+ * @returns {object|null} - { localDateKey, startLocal, endLocal } или null
+ * 
+ * Пример: API возвращает 4:00 UTC → UI должен показать 8:00 GMT+4
+ */
 function convertUtcStartToLocalRange(utcIsoString, durationMinutes) {
   if (!utcIsoString || typeof utcIsoString !== "string") return null;
+  
+  // Парсим UTC время
   const startUtc = new Date(utcIsoString);
   if (Number.isNaN(startUtc.getTime())) return null;
 
-  const startLocalMs =
-    startUtc.getTime() + LOCAL_TZ_OFFSET_MIN * 60 * 1000;
-  const startLocalDate = new Date(startLocalMs);
-
-  const startHH = String(startLocalDate.getHours()).padStart(2, "0");
-  const startMM = String(startLocalDate.getMinutes()).padStart(2, "0");
-  const startLocal = `${startHH}:${startMM}`;
-
-  const startMinutes = startLocalDate.getHours() * 60 + startLocalDate.getMinutes();
-  const { time: endLocal } = addMinutesLocal(startMinutes, durationMinutes || 0);
-
-  const y = startLocalDate.getFullYear();
-  const m = String(startLocalDate.getMonth() + 1).padStart(2, "0");
-  const d = String(startLocalDate.getDate()).padStart(2, "0");
+  // Извлекаем UTC компоненты времени
+  const utcHours = startUtc.getUTCHours();
+  const utcMinutes = startUtc.getUTCMinutes();
+  const utcDay = startUtc.getUTCDate();
+  const utcMonth = startUtc.getUTCMonth();
+  const utcYear = startUtc.getUTCFullYear();
+  
+  // Прибавляем GMT+4 offset к UTC времени
+  const startMinutesUtc = utcHours * 60 + utcMinutes;
+  const { time: startLocal, dayShift } = addMinutesLocal(
+    startMinutesUtc, 
+    LOCAL_TZ_OFFSET_MIN  // +240 минут = +4 часа
+  );
+  
+  // Вычисляем конечное время
+  const startMinutesLocal = parseTimeToMinutes(startLocal);
+  const { time: endLocal } = addMinutesLocal(
+    startMinutesLocal, 
+    durationMinutes || 0
+  );
+  
+  // Корректируем дату с учётом смещения дня
+  const localDate = new Date(Date.UTC(utcYear, utcMonth, utcDay + dayShift));
+  const y = localDate.getUTCFullYear();
+  const m = String(localDate.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(localDate.getUTCDate()).padStart(2, "0");
 
   return {
     localDateKey: `${y}-${m}-${d}`,
@@ -173,16 +195,39 @@ function computeDurationMinutes(startLocal, endLocal) {
   return diff;
 }
 
+/**
+ * Конвертирует локальное время GMT+4 из UI в UTC время для отправки в Pyrus API
+ * @param {number} day - День месяца
+ * @param {string} startLocal - Время начала в GMT+4 (например "08:00")
+ * @param {string} endLocal - Время окончания в GMT+4 (например "20:00")
+ * @returns {object|null} - { durationMinutes, startUtcIso, endUtcIso } или null
+ * 
+ * Пример: UI отправляет 8:00 GMT+4 → API должен получить 4:00 UTC
+ */
 function convertLocalRangeToUtc(day, startLocal, endLocal) {
   const durationMinutes = computeDurationMinutes(startLocal, endLocal);
   if (durationMinutes == null) return null;
 
   const { year, monthIndex } = state.monthMeta;
   const [hh, mm] = (startLocal || "00:00").split(":");
-
-  const startUtcMs =
-    Date.UTC(year, monthIndex, day, Number(hh), Number(mm)) -
-    LOCAL_TZ_OFFSET_MIN * 60 * 1000;
+  
+  // Вычитаем GMT+4 offset из локального времени для получения UTC
+  const localMinutes = Number(hh) * 60 + Number(mm);
+  const { time: utcTime, dayShift } = addMinutesLocal(
+    localMinutes, 
+    -LOCAL_TZ_OFFSET_MIN  // -240 минут = -4 часа
+  );
+  
+  const [utcHH, utcMM] = utcTime.split(":");
+  
+  // Создаём UTC время с учётом смещения дня
+  const startUtcMs = Date.UTC(
+    year, 
+    monthIndex, 
+    day + dayShift,  // применяем смещение дня если время перешло за полночь
+    Number(utcHH), 
+    Number(utcMM)
+  );
   const endUtcMs = startUtcMs + durationMinutes * 60 * 1000;
 
   return {
