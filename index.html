@@ -58,6 +58,32 @@
       </div>
 
       <div class="schedule-container">
+        <div class="schedule-toolbar">
+          <div class="toolbar-group">
+            <label for="quick-template-select">Шаблон смены</label>
+            <select id="quick-template-select"></select>
+          </div>
+
+          <div class="toolbar-group">
+            <label>Время</label>
+            <div class="toolbar-inline">
+              <input id="quick-time-from" type="time" />
+              <span class="toolbar-separator">—</span>
+              <input id="quick-time-to" type="time" />
+            </div>
+          </div>
+
+          <div class="toolbar-group">
+            <label for="quick-amount">Сумма</label>
+            <input id="quick-amount" type="number" min="0" step="100" />
+          </div>
+
+          <div class="toolbar-actions">
+            <button type="button" class="btn toggle" id="quick-mode-toggle">
+              Быстрое назначение
+            </button>
+          </div>
+        </div>
         <div class="schedule-scroll">
           <div id="schedule-root"></div>
         </div>
