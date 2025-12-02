@@ -1006,15 +1006,7 @@ body {
 /* ===== История изменений ===== */
 
 .change-log-panel {
-  margin: 8px 12px 12px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  transition: background 0.2s ease, border-color 0.2s ease;
+  display: none !important;
 }
 
 .change-log-header {

@@ -108,60 +108,56 @@ function renderColorLegend(currentLine) {
   const legendContent = document.getElementById('shift-legend-content');
   if (!legendContent) return;
 
-  const linesToRender = LINE_KEYS.filter((l) => (colorState.templatesByLine[l] || []).length > 0);
-  if (linesToRender.length === 0) {
-    legendContent.innerHTML = '<div class="muted">Нет шаблонов смен для отображения.</div>';
+  const templates = currentLine ? colorState.templatesByLine[currentLine] || [] : [];
+  const hasTemplates = templates.length > 0;
+
+  legendContent.innerHTML = '';
+
+  if (!hasTemplates) {
+    legendContent.innerHTML = '<div class="muted">Нет шаблонов смен для этой линии.</div>';
     return;
   }
 
-  legendContent.innerHTML = '';
-  const orderedLines = currentLine && linesToRender.includes(currentLine)
-    ? [currentLine, ...linesToRender.filter((l) => l !== currentLine)]
-    : linesToRender;
+  const group = document.createElement('div');
+  group.className = 'shift-legend-group';
 
-  orderedLines.forEach((line) => {
-    const templates = colorState.templatesByLine[line] || [];
-    const group = document.createElement('div');
-    group.className = 'shift-legend-group';
+  const title = document.createElement('div');
+  title.className = 'shift-legend-group-title';
+  title.textContent = `Линия ${currentLine}`;
+  group.appendChild(title);
 
-    const title = document.createElement('div');
-    title.className = 'shift-legend-group-title';
-    title.textContent = `Линия ${line}`;
-    group.appendChild(title);
+  const items = document.createElement('div');
+  items.className = 'shift-legend-items';
 
-    const items = document.createElement('div');
-    items.className = 'shift-legend-items';
+  templates.forEach((template) => {
+    const item = document.createElement('div');
+    item.className = 'shift-legend-item';
 
-    templates.forEach((template) => {
-      const item = document.createElement('div');
-      item.className = 'shift-legend-item';
+    const color = document.createElement('div');
+    color.className = 'shift-legend-color';
 
-      const color = document.createElement('div');
-      color.className = 'shift-legend-color';
-
-      if (template.specialShortLabel) {
-        color.classList.add('special');
-      } else {
-        const className = getTemplateClass(line, template.id);
-        if (className) {
-          color.classList.add(className);
-        }
+    if (template.specialShortLabel) {
+      color.classList.add('special');
+    } else {
+      const className = getTemplateClass(currentLine, template.id);
+      if (className) {
+        color.classList.add(className);
       }
+    }
 
-      const label = document.createElement('span');
-      const timeLabel = template.timeRange
-        ? ` (${template.timeRange.start}–${template.timeRange.end})`
-        : '';
-      label.textContent = `${template.name}${timeLabel}`;
+    const label = document.createElement('span');
+    const timeLabel = template.timeRange
+      ? ` (${template.timeRange.start}–${template.timeRange.end})`
+      : '';
+    label.textContent = `${template.name}${timeLabel}`;
 
-      item.appendChild(color);
-      item.appendChild(label);
-      items.appendChild(item);
-    });
-
-    group.appendChild(items);
-    legendContent.appendChild(group);
+    item.appendChild(color);
+    item.appendChild(label);
+    items.appendChild(item);
   });
+
+  group.appendChild(items);
+  legendContent.appendChild(group);
 }
 
 function initialize(templatesByLine, theme = 'dark') {
