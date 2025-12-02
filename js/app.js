@@ -36,18 +36,13 @@ const state = {
   auth: {
     user: null,
     permissions: {
-      ALL: "view",
       L1: "view",
       L2: "view",
-      OV: "view",
-      OP: "view",
-      OU: "view",
     },
   },
   ui: {
     currentLine: "L1",
     theme: "dark",
-    deptFilter: "ALL",
   },
   quickMode: {
     enabled: false,
@@ -60,18 +55,9 @@ const state = {
     L1: [],
     L2: [],
   },
-  employeeDeptGroupById: {},
   shiftTemplatesByLine: {
     L1: [],
     L2: [],
-  },
-  shiftTemplatesByDept: {
-    ALL: [],
-    L1: [],
-    L2: [],
-    OV: [],
-    OP: [],
-    OU: [],
   },
   scheduleByLine: {
     L1: { monthKey: null, days: [], rows: [] },
@@ -108,25 +94,18 @@ function deepClone(obj) {
 // Проверка прав доступа
 // -----------------------------
 
-function getCurrentFilterKey() {
-  return state.ui.deptFilter || "ALL";
-}
-
-function canEditLine(_line) {
-  const key = getCurrentFilterKey();
-  const permission = state.auth.permissions && state.auth.permissions[key];
+function canEditLine(line) {
+  const permission = state.auth.permissions[line];
   return permission === "edit";
 }
 
-function canViewLine(_line) {
-  const key = getCurrentFilterKey();
-  const permission = state.auth.permissions && state.auth.permissions[key];
+function canViewLine(line) {
+  const permission = state.auth.permissions[line];
   return permission === "view" || permission === "edit";
 }
 
 function getCurrentLinePermission() {
-  const key = getCurrentFilterKey();
-  return state.auth.permissions && state.auth.permissions[key];
+  return state.auth.permissions[state.ui.currentLine];
 }
 
 // -----------------------------
@@ -269,14 +248,7 @@ async function auth(login, password) {
   }
 
   state.auth.user = result.user || null;
-  state.auth.permissions = result.permissions || {
-    ALL: "view",
-    L1: "view",
-    L2: "view",
-    OV: "view",
-    OP: "view",
-    OU: "view",
-  };
+  state.auth.permissions = result.permissions || { L1: "view", L2: "view" };
   return result;
 }
 
@@ -306,12 +278,6 @@ const currentMonthLabelEl = $("#current-month-label");
 
 const btnLineL1El = $("#btn-line-l1");
 const btnLineL2El = $("#btn-line-l2");
-const btnDeptAllEl = $("#btn-dept-all");
-const btnDeptL1El = $("#btn-dept-l1");
-const btnDeptL2El = $("#btn-dept-l2");
-const btnDeptOvEl = $("#btn-dept-ov");
-const btnDeptOpEl = $("#btn-dept-op");
-const btnDeptOuEl = $("#btn-dept-ou");
 const btnPrevMonthEl = $("#btn-prev-month");
 const btnNextMonthEl = $("#btn-next-month");
 const btnThemeToggleEl = $("#btn-theme-toggle");
@@ -347,13 +313,7 @@ function init() {
 }
 
 function getCurrentLineTemplates() {
-  const filterKey = getCurrentFilterKey();
-  const byDept = state.shiftTemplatesByDept || {};
-  if (filterKey && byDept[filterKey] && byDept[filterKey].length) {
-    return byDept[filterKey];
-  }
-  // запасной вариант — показываем общие шаблоны
-  return byDept.ALL || [];
+  return state.shiftTemplatesByLine[state.ui.currentLine] || [];
 }
 
 function initMonthMetaToToday() {
@@ -487,8 +447,6 @@ function bindLoginForm() {
 }
 
 function bindTopBarButtons() {
-  // Переключение "технической" линии (L1/L2) оставляем как есть,
-  // но права и фильтрация теперь завязаны на deptFilter (ALL / L1 / L2 / OV / OP / OU).
   btnLineL1El.addEventListener("click", () => {
     state.ui.currentLine = "L1";
     updateLineToggleUI();
@@ -497,7 +455,7 @@ function bindTopBarButtons() {
     renderQuickTemplateOptions();
     renderScheduleCurrentLine();
     if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
-      ShiftColors.renderColorLegend(getCurrentFilterKey());
+      ShiftColors.renderColorLegend(state.ui.currentLine);
     }
   });
 
@@ -509,7 +467,7 @@ function bindTopBarButtons() {
     renderQuickTemplateOptions();
     renderScheduleCurrentLine();
     if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
-      ShiftColors.renderColorLegend(getCurrentFilterKey());
+      ShiftColors.renderColorLegend(state.ui.currentLine);
     }
   });
 
@@ -533,78 +491,11 @@ function bindTopBarButtons() {
     reloadScheduleForCurrentMonth();
   });
 
-  if (btnDeptAllEl) {
-    btnDeptAllEl.addEventListener("click", () => {
-      state.ui.deptFilter = "ALL";
-      updateDeptFilterUI();
-      renderScheduleCurrentLine();
-      if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
-        ShiftColors.renderColorLegend(getCurrentFilterKey());
-      }
-    });
-  }
-
-  if (btnDeptL1El) {
-    btnDeptL1El.addEventListener("click", () => {
-      state.ui.deptFilter = "L1";
-      updateDeptFilterUI();
-      renderScheduleCurrentLine();
-      if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
-        ShiftColors.renderColorLegend(getCurrentFilterKey());
-      }
-    });
-  }
-
-  if (btnDeptL2El) {
-    btnDeptL2El.addEventListener("click", () => {
-      state.ui.deptFilter = "L2";
-      updateDeptFilterUI();
-      renderScheduleCurrentLine();
-      if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
-        ShiftColors.renderColorLegend(getCurrentFilterKey());
-      }
-    });
-  }
-
-  if (btnDeptOvEl) {
-    btnDeptOvEl.addEventListener("click", () => {
-      state.ui.deptFilter = "OV";
-      updateDeptFilterUI();
-      renderScheduleCurrentLine();
-      if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
-        ShiftColors.renderColorLegend(getCurrentFilterKey());
-      }
-    });
-  }
-
-  if (btnDeptOpEl) {
-    btnDeptOpEl.addEventListener("click", () => {
-      state.ui.deptFilter = "OP";
-      updateDeptFilterUI();
-      renderScheduleCurrentLine();
-      if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
-        ShiftColors.renderColorLegend(getCurrentFilterKey());
-      }
-    });
-  }
-
-  if (btnDeptOuEl) {
-    btnDeptOuEl.addEventListener("click", () => {
-      state.ui.deptFilter = "OU";
-      updateDeptFilterUI();
-      renderScheduleCurrentLine();
-      if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
-        ShiftColors.renderColorLegend(getCurrentFilterKey());
-      }
-    });
-  }
-
   updateLineToggleUI();
-  updateDeptFilterUI();
 
-  // Легенда цветов теперь тоже завязана на текущий фильтр
+  // Отображение легенды цветов при переключении линии
   if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
-    ShiftColors.renderColorLegend(getCurrentFilterKey());
+    ShiftColors.renderColorLegend(state.ui.currentLine);
   }
 }
 
@@ -616,29 +507,6 @@ function updateLineToggleUI() {
   } else {
     btnLineL1El.classList.remove("active");
     btnLineL2El.classList.add("active");
-  }
-}
-
-function updateDeptFilterUI() {
-  const filter = state.ui.deptFilter || "ALL";
-
-  const buttons = [
-    { key: "ALL", el: btnDeptAllEl },
-    { key: "L1", el: btnDeptL1El },
-    { key: "L2", el: btnDeptL2El },
-    { key: "OV", el: btnDeptOvEl },
-    { key: "OP", el: btnDeptOpEl },
-    { key: "OU", el: btnDeptOuEl },
-  ];
-
-  buttons.forEach(({ el }) => {
-    if (!el) return;
-    el.classList.remove("active");
-  });
-
-  const active = buttons.find((b) => b.key === filter);
-  if (active && active.el) {
-    active.el.classList.add("active");
   }
 }
 
@@ -824,7 +692,7 @@ function updateSaveButtonState() {
 }
 
 function getQuickModeShift(line) {
-  const templates = getCurrentLineTemplates();
+  const templates = state.shiftTemplatesByLine[line] || [];
   const tmpl = templates.find((t) => t.id === state.quickMode.templateId);
 
   let startLocal = state.quickMode.timeFrom;
@@ -850,8 +718,8 @@ function getQuickModeShift(line) {
 }
 
 function resolveSpecialShortLabel(line, templateId) {
-  if (templateId == null) return null;
-  const templates = getCurrentLineTemplates();
+  if (!line || templateId == null) return null;
+  const templates = state.shiftTemplatesByLine[line] || [];
   const tmpl = templates.find((t) => t.id === templateId);
   return tmpl?.specialShortLabel || null;
 }
@@ -1230,7 +1098,7 @@ async function loadInitialData() {
 
     // Отображение легенды цветов после загрузки данных
     if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
-      ShiftColors.renderColorLegend(getCurrentFilterKey());
+      ShiftColors.renderColorLegend(state.ui.currentLine);
     }
   } catch (err) {
     console.error("loadInitialData error:", err);
@@ -1238,156 +1106,53 @@ async function loadInitialData() {
   }
 }
 
-
 async function loadEmployees() {
   const raw = await pyrusApi("/v4/members", "GET");
   const data = unwrapPyrusData(raw);
 
-  const members = data.members || [];
-
   if (data.employeesByLine) {
-    // Если backend уже прислал готовое разбиение по линиям — используем его как есть.
     state.employeesByLine.L1 = data.employeesByLine.L1 || [];
     state.employeesByLine.L2 = data.employeesByLine.L2 || [];
-  } else {
-    const employeesByLine = { L1: [], L2: [] };
-
-    for (const m of members) {
-      if (m.banned) continue;
-
-      const deptName = (m.department_name || "").toLowerCase();
-      const position = (m.position || "").toLowerCase();
-
-      const isL1 =
-        deptName.includes("оператор") ||
-        deptName.includes("контакт-центр") ||
-        position.includes("оператор");
-
-      const isL2 =
-        deptName.includes("инженер") ||
-        deptName.includes("техпод") ||
-        deptName.includes("техническая поддержка") ||
-        position.includes("инженер");
-
-      const employee = {
-        id: m.id,
-        fullName: `${m.last_name || ""} ${m.first_name || ""}`.trim(),
-        email: m.email || "",
-        departmentName: m.department_name || "",
-        position: m.position || "",
-      };
-
-      // Никого не отбрасываем: каждый сотрудник попадёт хотя бы в одну линию.
-      if (isL1) {
-        employeesByLine.L1.push(employee);
-      }
-      if (isL2) {
-        employeesByLine.L2.push(employee);
-      }
-      if (!isL1 && !isL2) {
-        employeesByLine.L1.push(employee);
-        employeesByLine.L2.push(employee);
-      }
-    }
-
-    const sortEmployees = (arr) =>
-      arr.sort((a, b) => a.fullName.localeCompare(b.fullName, "ru"));
-
-    state.employeesByLine.L1 = sortEmployees(employeesByLine.L1);
-    state.employeesByLine.L2 = sortEmployees(employeesByLine.L2);
-  }
-
-
-  // После формирования L1/L2 объединяем сотрудников в единый список,
-  // чтобы обе линии показывали один и тот же пул сотрудников.
-  const allById = Object.create(null);
-  for (const lineKey of ["L1", "L2"]) {
-    const list = state.employeesByLine[lineKey] || [];
-    for (const emp of list) {
-      if (!emp || emp.id == null) continue;
-      allById[emp.id] = emp;
-    }
-  }
-
-  const allEmployees = Object.values(allById).sort((a, b) =>
-    (a.fullName || "").localeCompare(b.fullName || "", "ru")
-  );
-
-  state.employeesByLine.L1 = allEmployees;
-  state.employeesByLine.L2 = allEmployees;
-
-  // Независимо от того, как определили линии, считаем группы отделов ОВ/ОП/ОУ.
-  buildDeptGroupsFromMembers(members);
-}
-
-
-
-function buildDeptGroupsFromMembers(members) {
-  const map = {};
-
-  if (!Array.isArray(members)) {
-    state.employeeDeptGroupById = map;
     return;
   }
 
+  const members = data.members || [];
+  const employeesByLine = { L1: [], L2: [] };
+
   for (const m of members) {
-    if (!m || m.banned) continue;
-    const id = m.id;
-    if (id == null) continue;
+    if (m.banned) continue;
 
-    const deptName = String(m.department_name || "").toLowerCase();
-    const position = String(m.position || "").toLowerCase();
-    const deptId = m.department_id;
+    const deptName = (m.department_name || "").toLowerCase();
+    const position = (m.position || "").toLowerCase();
 
-    const groups = new Set();
-
-    // Базовая группа: ВСЕ
-    groups.add("ALL");
-
-    // Линия 1 — операторы / контакт-центр (по отделу / названию, но НЕ по должности инженера)
-    const isOperator =
+    const isL1 =
       deptName.includes("оператор") ||
-      deptName.includes("контакт");
+      deptName.includes("контакт-центр") ||
+      position.includes("оператор");
 
-    if (isOperator) {
-      groups.add("L1");
-    }
+    const isL2 =
+      deptName.includes("инженер") ||
+      deptName.includes("техпод") ||
+      deptName.includes("техническая поддержка") ||
+      position.includes("инженер");
 
-    // Линия 2 — только по отделам, без анализа должности:
-    // Инженера 5/2, Инженера 2/2, Инженеры (ID: 171248779, 171248780, 108368026)
-    const isStrictL2Dept =
-      deptId === 171248779 ||
-      deptId === 171248780 ||
-      deptId === 108368026 ||
-      deptName.includes("инженера") ||
-      deptName.includes("инженеры");
+    const employee = {
+      id: m.id,
+      fullName: `${m.last_name || ""} ${m.first_name || ""}`.trim(),
+      email: m.email || "",
+      departmentName: m.department_name || "",
+      position: m.position || "",
+    };
 
-    if (isStrictL2Dept) {
-      groups.add("L2");
-    }
-
-    const isDeptVnedrenie = deptName.includes("внедрен"); // Отдел внедрения
-    const isDeptClient = deptName.includes("клиентск");   // Клиентский отдел
-    const isDeptHunter = deptName.includes("хантер");     // Хантер-менеджеры
-    const isDeptSales = deptName.includes("продаж");      // Отдел продаж
-    const isDeptFinance = deptName.includes("финанс");    // Отдел финансов
-
-    if (isDeptVnedrenie || position.includes("руководитель отдела внедрения")) {
-      groups.add("OV"); // Отдел внедрения
-    }
-
-    if (isDeptClient || isDeptHunter || isDeptSales) {
-      groups.add("OP"); // Отдел продаж
-    }
-
-    if (isDeptFinance || position.includes("руководитель фин")) {
-      groups.add("OU"); // Отдел управления (финансы)
-    }
-
-    map[id] = Array.from(groups);
+    if (isL1) employeesByLine.L1.push(employee);
+    if (isL2) employeesByLine.L2.push(employee);
   }
 
-  state.employeeDeptGroupById = map;
+  const sortEmployees = (arr) =>
+    arr.sort((a, b) => a.fullName.localeCompare(b.fullName, "ru"));
+
+  state.employeesByLine.L1 = sortEmployees(employeesByLine.L1);
+  state.employeesByLine.L2 = sortEmployees(employeesByLine.L2);
 }
 
 async function loadShiftsCatalog() {
@@ -1406,97 +1171,43 @@ async function loadShiftsCatalog() {
   });
 
   const idxName = colIndexByName["Название смены"];
-  const idxTimeFrom = colIndexByName["Время начала"];
-  const idxTimeTo = colIndexByName["Время окончания"];
-  const idxAmount = colIndexByName["Сумма"];
+  const idxTime = colIndexByName["время смены"];
+  const idxAmount = colIndexByName["Сумма за смену"];
   const idxDept = colIndexByName["Отдел"];
 
-  const templatesByLine = {
-    L1: [],
-    L2: [],
-  };
-
-  const templatesByDept = {
-    ALL: [],
-    L1: [],
-    L2: [],
-    OV: [],
-    OP: [],
-    OU: [],
-  };
+  const templatesByLine = { L1: [], L2: [] };
 
   for (const item of items) {
     const values = item.values || [];
-    const name = values[idxName] || "";
-    const timeFrom = values[idxTimeFrom] || "";
-    const timeTo = values[idxTimeTo] || "";
-    const amount = Number(values[idxAmount] || 0);
-    const dept = values[idxDept] || "";
+    const name = idxName != null ? values[idxName] : "";
+    const timeRaw = idxTime != null ? values[idxTime] : "";
+    const amount = idxAmount != null ? Number(values[idxAmount] || 0) : 0;
+    const dept = idxDept != null ? String(values[idxDept] || "") : "";
 
-    const templateId =
-      typeof item.id === "number" ? item.id : Number(item.id);
+    const timeRange = parseShiftTimeRangeString(timeRaw);
+
+    const normalizedName = String(name || "").trim().toUpperCase();
+    const specialShortLabel = ["ВЫХ", "ОТП", "ДР"].includes(normalizedName)
+      ? normalizedName
+      : null;
 
     const template = {
-      id: templateId,
+      id: item.item_id,
       name,
-      timeRange:
-        timeFrom && timeTo
-          ? {
-              start: timeFrom,
-              end: timeTo,
-            }
-          : null,
+      timeRaw,
       amount,
       dept,
-      specialShortLabel: item.short_name || null,
+      timeRange,
+      specialShortLabel,
     };
 
-    const deptUpper = String(dept || "").toUpperCase();
-
-    const groups = new Set();
-
-    if (deptUpper.includes("ВСЕ") || deptUpper.includes("ALL")) {
-      groups.add("ALL");
-    }
-    if (deptUpper.includes("L1")) {
-      groups.add("L1");
-    }
-    if (deptUpper.includes("L2")) {
-      groups.add("L2");
-    }
-    if (deptUpper.includes("ОВ")) {
-      groups.add("OV");
-    }
-    if (deptUpper.includes("ОП")) {
-      groups.add("OP");
-    }
-    if (deptUpper.includes("ОУ")) {
-      groups.add("OU");
-    }
-
-    // Если явно не указан отдел — считаем шаблон общим
-    if (groups.size === 0) {
-      groups.add("ALL");
-    }
-
-    groups.forEach((g) => {
-      if (templatesByDept[g]) {
-        templatesByDept[g].push(template);
-      }
-    });
-
-    // Для обратной совместимости с модулем цветов:
-    if (groups.has("L1") || groups.has("ALL")) {
-      templatesByLine.L1.push(template);
-    }
-    if (groups.has("L2") || groups.has("ALL")) {
-      templatesByLine.L2.push(template);
-    }
+    const deptUpper = dept.toUpperCase();
+    if (deptUpper.includes("L1")) templatesByLine.L1.push(template);
+    if (deptUpper.includes("L2")) templatesByLine.L2.push(template);
   }
 
   state.shiftTemplatesByLine.L1 = templatesByLine.L1;
   state.shiftTemplatesByLine.L2 = templatesByLine.L2;
-  state.shiftTemplatesByDept = templatesByDept;
 
   // Инициализация цветов смен
   if (typeof ShiftColors !== 'undefined' && ShiftColors.initialize) {
@@ -1559,33 +1270,24 @@ async function reloadScheduleForCurrentMonth() {
     if (!empId) continue;
 
     const shiftCatalog = shiftField.value || {};
-    const deptRaw =
-      (shiftCatalog.values && shiftCatalog.values[4]) || shiftCatalog.dept || "";
-    const dept = String(deptRaw).toUpperCase();
+    const dept = String(
+      (shiftCatalog.values && shiftCatalog.values[4]) || ""
+    ).toUpperCase();
 
-    const shiftItemIdRaw =
-      shiftCatalog.item_id != null ? shiftCatalog.item_id : shiftCatalog.id;
+    let line = null;
+    if (dept.includes("L1") && !dept.includes("L2")) line = "L1";
+    else if (dept.includes("L2") && !dept.includes("L1")) line = "L2";
+    else if (dept.includes("L1") && dept.includes("L2")) line = "L1";
+    else continue;
+
     const shiftItemId =
-      typeof shiftItemIdRaw === "number"
-        ? shiftItemIdRaw
-        : Number(shiftItemIdRaw);
-
-    // Определяем, в какие "технические" линии (L1/L2) положить смену.
-    // Теперь мы никого не отбрасываем: если отдел не указан явно,
-    // кладём смену в обе линии.
-    const linesForShift = [];
-    if (dept.includes("L1")) linesForShift.push("L1");
-    if (dept.includes("L2")) linesForShift.push("L2");
-
-    if (!linesForShift.length) {
-      linesForShift.push("L1", "L2");
-    }
+      shiftCatalog.item_id != null ? shiftCatalog.item_id : shiftCatalog.id;
 
     const matchingTemplate =
-      shiftItemId != null
-        ? (state.shiftTemplatesByLine.L1 || []).concat(
-            state.shiftTemplatesByLine.L2 || []
-          ).find((t) => t.id === shiftItemId)
+      shiftItemId != null && line
+        ? (state.shiftTemplatesByLine[line] || []).find(
+            (t) => t.id === shiftItemId
+          )
         : null;
     const specialShortLabel =
       (matchingTemplate && matchingTemplate.specialShortLabel) || null;
@@ -1595,25 +1297,23 @@ async function reloadScheduleForCurrentMonth() {
         ? moneyField.value
         : Number(moneyField.value || 0);
 
-    for (const line of linesForShift) {
-      const map = shiftMapByLine[line];
-      if (!map[empId]) map[empId] = {};
+    const map = shiftMapByLine[line];
+    if (!map[empId]) map[empId] = {};
 
-      map[empId][d] = {
-        startLocal,
-        endLocal,
-        amount,
-        templateId: shiftItemId,
-        taskId: task.id,
-        rawDueValue: dueField.value,
-        rawDuration,
-        durationMinutes: rawDuration,
-        startUtcIso,
-        endUtcIso,
-        rawShift: shiftCatalog,
-        specialShortLabel,
-      };
-    }
+    map[empId][d] = {
+      startLocal,
+      endLocal,
+      amount,
+      templateId: shiftItemId,
+      taskId: task.id,
+      rawDueValue: dueField.value,
+      rawDuration,
+      durationMinutes: rawDuration,
+      startUtcIso,
+      endUtcIso,
+      rawShift: shiftCatalog,
+      specialShortLabel,
+    };
   }
 
   const days = [];
@@ -1621,8 +1321,6 @@ async function reloadScheduleForCurrentMonth() {
   for (let d = 1; d <= Math.min(daysInMonth, MAX_DAYS_IN_MONTH); d++) {
     days.push(d);
   }
-
-  const deptGroupsById = state.employeeDeptGroupById || {};
 
   for (const line of ["L1", "L2"]) {
     const empList = state.employeesByLine[line] || [];
@@ -1633,18 +1331,9 @@ async function reloadScheduleForCurrentMonth() {
         const shift = map && map[emp.id] && map[emp.id][d];
         return shift || null;
       });
-
-      const empGroups = deptGroupsById[emp.id];
-      const groupsArray = Array.isArray(empGroups)
-        ? empGroups.slice()
-        : empGroups
-        ? [empGroups]
-        : ["ALL"];
-
       return {
         employeeId: emp.id,
         employeeName: emp.fullName,
-        deptGroups: groupsArray,
         shiftsByDay,
       };
     });
@@ -1673,22 +1362,7 @@ function renderScheduleCurrentLine() {
   }
 
   const canEdit = canEditLine(line);
-  const { days } = sched;
-  let rows = sched.rows || [];
-
-  const deptFilter = state.ui.deptFilter || "ALL";
-  if (deptFilter !== "ALL") {
-    rows = rows.filter((row) => {
-      if (!row.deptGroups || !row.deptGroups.length) return false;
-      return row.deptGroups.includes(deptFilter);
-    });
-  }
-
-  if (!rows.length) {
-    scheduleRootEl.innerHTML =
-      '<div style="padding: 12px; font-size: 13px; color: var(--text-muted);">Нет сотрудников для выбранного фильтра.</div>';
-    return;
-  }
+  const { days, rows } = sched;
 
   const table = document.createElement("table");
   table.className = "schedule-table";
@@ -1977,14 +1651,13 @@ function openShiftPopover(context, anchorEl) {
     monthIndex + 1
   ).padStart(2, "0")}.${year}`;
 
-  const templates = getCurrentLineTemplates();
-  const filterKey = getCurrentFilterKey();
+  const templates = state.shiftTemplatesByLine[line] || [];
 
   shiftPopoverEl.innerHTML = `
     <div class="shift-popover-header">
       <div>
         <div class="shift-popover-title">${employeeName}</div>
-        <div class="shift-popover-subtitle">${dateLabel} • Фильтр: ${filterKey}</div>
+        <div class="shift-popover-subtitle">${dateLabel} • Линия ${line}</div>
       </div>
       <button class="shift-popover-close" type="button">✕</button>
     </div>
