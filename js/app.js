@@ -454,6 +454,9 @@ function bindTopBarButtons() {
     updateQuickModeForLine();
     renderQuickTemplateOptions();
     renderScheduleCurrentLine();
+    if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
+      ShiftColors.renderColorLegend(state.ui.currentLine);
+    }
   });
 
   btnLineL2El.addEventListener("click", () => {
@@ -463,6 +466,9 @@ function bindTopBarButtons() {
     updateQuickModeForLine();
     renderQuickTemplateOptions();
     renderScheduleCurrentLine();
+    if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
+      ShiftColors.renderColorLegend(state.ui.currentLine);
+    }
   });
 
   btnPrevMonthEl.addEventListener("click", () => {
@@ -707,7 +713,15 @@ function getQuickModeShift(line) {
     endLocal,
     amount: Number(amount || 0),
     templateId: tmpl?.id ?? null,
+    specialShortLabel: tmpl?.specialShortLabel || null,
   };
+}
+
+function resolveSpecialShortLabel(line, templateId) {
+  if (!line || templateId == null) return null;
+  const templates = state.shiftTemplatesByLine[line] || [];
+  const tmpl = templates.find((t) => t.id === templateId);
+  return tmpl?.specialShortLabel || null;
 }
 
 function logChange({
@@ -1008,7 +1022,8 @@ function handleShiftCellClick({ line, row, day, dayIndex, shift, cellEl }) {
   }
 
   if (state.quickMode.enabled) {
-    const { startLocal, endLocal, amount, templateId } = getQuickModeShift(line);
+    const { startLocal, endLocal, amount, templateId, specialShortLabel } =
+      getQuickModeShift(line);
 
     if (!startLocal || !endLocal) {
       alert(
@@ -1035,6 +1050,7 @@ function handleShiftCellClick({ line, row, day, dayIndex, shift, cellEl }) {
       endLocal,
       amount,
       templateId,
+      specialShortLabel,
       startUtcIso: conversion?.startUtcIso || null,
       endUtcIso: conversion?.endUtcIso || null,
       durationMinutes: conversion?.durationMinutes ?? null,
@@ -1050,7 +1066,7 @@ function handleShiftCellClick({ line, row, day, dayIndex, shift, cellEl }) {
       employeeName: row.employeeName,
       day,
       previousShift: previousShift || null,
-      nextShift: { startLocal, endLocal, amount },
+      nextShift: { startLocal, endLocal, amount, specialShortLabel },
     });
     return;
   }
@@ -1195,7 +1211,7 @@ async function loadShiftsCatalog() {
 
   // Инициализация цветов смен
   if (typeof ShiftColors !== 'undefined' && ShiftColors.initialize) {
-    ShiftColors.initialize(items, headers);
+    ShiftColors.initialize(state.shiftTemplatesByLine, state.ui.theme);
   }
 }
 
@@ -1433,7 +1449,7 @@ function renderScheduleCurrentLine() {
 
         // Применение цвета к pill
         if (typeof ShiftColors !== 'undefined' && ShiftColors.applyColorToPill && shift.templateId) {
-          ShiftColors.applyColorToPill(pill, shift.templateId);
+          ShiftColors.applyColorToPill(pill, shift.templateId, line);
         }
 
         if (shift.specialShortLabel) {
@@ -1805,12 +1821,14 @@ function openShiftPopover(context, anchorEl) {
       const key = `${line}-${year}-${monthIndex + 1}-${employeeId}-${day}`;
       const templateId =
         selectedTemplateId != null ? selectedTemplateId : shift?.templateId;
+      const specialShortLabel = resolveSpecialShortLabel(line, templateId);
       const conversion = convertLocalRangeToUtc(day, start, end);
       state.localChanges[key] = {
         startLocal: start,
         endLocal: end,
         amount,
         templateId,
+        specialShortLabel,
         startUtcIso: conversion?.startUtcIso || null,
         endUtcIso: conversion?.endUtcIso || null,
         durationMinutes: conversion?.durationMinutes ?? null,
@@ -1826,7 +1844,7 @@ function openShiftPopover(context, anchorEl) {
         employeeName,
         day,
         previousShift: shift || null,
-        nextShift: { startLocal: start, endLocal: end, amount },
+        nextShift: { startLocal: start, endLocal: end, amount, specialShortLabel },
       });
       closeShiftPopover();
     });
@@ -1862,12 +1880,17 @@ function applyLocalChangesToSchedule() {
           : convertLocalRangeToUtc(day, change.startLocal, change.endLocal) ||
             change;
 
+        const specialShortLabel =
+          change.specialShortLabel ??
+          resolveSpecialShortLabel(line, change.templateId ?? row.shiftsByDay[idx]?.templateId);
+
         if (!row.shiftsByDay[idx]) {
           row.shiftsByDay[idx] = {
             startLocal: change.startLocal,
             endLocal: change.endLocal,
             amount: Number(change.amount || 0),
             templateId: change.templateId ?? null,
+            specialShortLabel,
             startUtcIso: enriched.startUtcIso || null,
             endUtcIso: enriched.endUtcIso || null,
             durationMinutes: enriched.durationMinutes ?? null,
@@ -1879,6 +1902,7 @@ function applyLocalChangesToSchedule() {
           if (change.templateId != null) {
             row.shiftsByDay[idx].templateId = change.templateId;
           }
+          row.shiftsByDay[idx].specialShortLabel = specialShortLabel;
           row.shiftsByDay[idx].startUtcIso = enriched.startUtcIso || null;
           row.shiftsByDay[idx].endUtcIso = enriched.endUtcIso || null;
           row.shiftsByDay[idx].durationMinutes =
