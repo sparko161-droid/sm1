@@ -47,7 +47,10 @@
   /* Специальные смены (ВЫХ, ОТП, ДР) */
   --shift-special-bg: rgba(234, 179, 8, 0.12);
   --shift-special-border: rgba(234, 179, 8, 0.5);
-  
+  /* Отпуск (полоса в графике) */
+  --vacation-bg: #000000;
+  --vacation-text: #ffffff;
+
   --weekend-bg: rgba(200, 0, 0, 0.12);
   --weekend-strong: rgba(200, 0, 0, 0.25);
   --shadow-strong: 0 6px 20px rgba(0, 0, 0, 0.06);
@@ -108,6 +111,10 @@ body.dark-theme {
   --shift-special-bg: rgba(250, 204, 21, 0.15);
   --shift-special-border: rgba(250, 204, 21, 0.5);
   
+  /* Отпуск (полоса в графике) */
+  --vacation-bg: #bdbdbd;
+  --vacation-text: #000000;
+
   --weekend-bg: rgba(255, 75, 75, 0.15);
   --weekend-strong: rgba(255, 75, 75, 0.28);
   --shadow-strong: 0 12px 40px rgba(0, 0, 0, 0.5);
@@ -515,6 +522,72 @@ body {
   background: var(--shift-special-bg);
   border-color: var(--shift-special-border);
 }
+
+/* ===== Полоса отпуска (colSpan, readonly) ===== */
+
+.vacation-cell {
+  padding: 0;
+}
+
+.vacation-pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: calc(100% - 6px);
+  height: calc(var(--cell-size) - 6px);
+  margin: 1px 3px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--vacation-text);
+  background: var(--vacation-bg);
+  border: 1px solid transparent;
+  cursor: pointer;
+  user-select: none;
+}
+
+.vacation-label {
+  /* чуть ниже центра, чтобы бейджи сверху не конфликтовали с текстом */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding-top: 8px;
+  pointer-events: none;
+}
+
+/* ===== Маркер дня рождения ===== */
+
+.birthday-pill {
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.2px;
+  background: #ff2b2b;
+  color: #000;
+  cursor: pointer;
+  user-select: none;
+  z-index: 3;
+}
+
+/* Когда ДР отображается поверх отпускной полосы */
+.birthday-pill-in-vacation {
+  top: 3px;
+  /* left задаётся инлайном в процентах относительно длины отпускной полосы */
+  transform: translateX(-50%);
+}
+
 
 /* Динамические цвета пилюль смен */
 .shift-pill[class*="shift-template-"] {
@@ -1055,3 +1128,8 @@ body {
 .change-log-empty {
   color: var(--text-muted);
 }
+
+
+/* Tabs for lines */
+.line-tabs{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.line-tabs .btn{min-width:44px;}

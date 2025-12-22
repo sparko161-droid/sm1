@@ -15,6 +15,32 @@ const GRAPH_HOOK_URL = "https://jolikcisout.beget.app/webhook/pyrus/graph";
 const MAX_DAYS_IN_MONTH = 31;
 const LOCAL_TZ_OFFSET_MIN = 4 * 60; // GMT+4
 
+// -----------------------------
+// Конфиг вкладок (линий)
+// -----------------------------
+const LINE_KEYS_IN_UI_ORDER = ["ALL", "OP", "OV", "L1", "L2", "AI", "OU"];
+const LINE_LABELS = { ALL: "ВСЕ", OP: "OP", OV: "OV", L1: "L1", L2: "L2", AI: "AI", OU: "OU" };
+
+// Жёсткая привязка department_id -> вкладка
+const LINE_DEPT_IDS = {
+  L1: [108368027],
+  L2: [108368026, 171248779, 171248780],
+  OV: [80208117],
+  OP: [108368021, 157753518, 157753516], // важно: порядок групп
+  OU: [108368030],
+  AI: [166353950],
+};
+
+// Руководители/учредители (всегда сверху во "ВСЕ")
+const TOP_MANAGEMENT_IDS = [1167305, 314287]; // Лузин, Сухачев
+
+// Порядок групп (department_id) для сортировки внутри вкладок
+const DEPT_ORDER_BY_LINE = {
+  L2: LINE_DEPT_IDS.L2.slice(),
+  OP: LINE_DEPT_IDS.OP.slice(),
+};
+
+
 // Универсальный helper для n8n-обёртки Pyrus { success, data }
 function unwrapPyrusData(raw) {
   if (
@@ -36,12 +62,17 @@ const state = {
   auth: {
     user: null,
     permissions: {
+      ALL: "view",
+      OP: "view",
+      OV: "view",
+      OU: "view",
+      AI: "view",
       L1: "view",
       L2: "view",
     },
   },
   ui: {
-    currentLine: "L1",
+    currentLine: "ALL",
     theme: "dark",
   },
   quickMode: {
@@ -52,16 +83,31 @@ const state = {
     amount: "",
   },
   employeesByLine: {
+    ALL: [],
+    OP: [],
+    OV: [],
     L1: [],
     L2: [],
+    AI: [],
+    OU: [],
   },
   shiftTemplatesByLine: {
+    ALL: [],
+    OP: [],
+    OV: [],
     L1: [],
     L2: [],
+    AI: [],
+    OU: [],
   },
   scheduleByLine: {
+    ALL: { monthKey: null, days: [], rows: [] },
+    OP: { monthKey: null, days: [], rows: [] },
+    OV: { monthKey: null, days: [], rows: [] },
     L1: { monthKey: null, days: [], rows: [] },
     L2: { monthKey: null, days: [], rows: [] },
+    AI: { monthKey: null, days: [], rows: [] },
+    OU: { monthKey: null, days: [], rows: [] },
   },
   originalScheduleByLine: {
     L1: { monthKey: null, days: [], rows: [] },
@@ -73,6 +119,7 @@ const state = {
     year: null,
     monthIndex: null,
   },
+  vacationsByEmployee: {},
 };
 
 const scheduleCacheByLine = {
@@ -95,12 +142,12 @@ function deepClone(obj) {
 // -----------------------------
 
 function canEditLine(line) {
-  const permission = state.auth.permissions[line];
+  const permission = state.auth.permissions[line] || state.auth.permissions.ALL;
   return permission === "edit";
 }
 
 function canViewLine(line) {
-  const permission = state.auth.permissions[line];
+  const permission = state.auth.permissions[line] || state.auth.permissions.ALL;
   return permission === "view" || permission === "edit";
 }
 
@@ -111,6 +158,21 @@ function getCurrentLinePermission() {
 // -----------------------------
 // Утилиты времени
 // -----------------------------
+
+// Нормализация времени к формату HH:MM.
+// Принимает также "2:00", "2", "02", "14.30" и т.п.
+function normalizeTimeHHMM(raw) {
+  if (raw == null) return "";
+  const s = String(raw).trim().replace(".", ":");
+  if (!s) return "";
+
+  const m = s.match(/^(\d{1,2})(?::(\d{1,2}))?$/);
+  if (!m) return s;
+
+  const hh = String(parseInt(m[1], 10)).padStart(2, "0");
+  const mm = String(parseInt(m[2] || "0", 10)).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
 
 function parseShiftTimeRangeString(raw) {
   if (!raw || typeof raw !== "string") return null;
@@ -196,23 +258,62 @@ function computeDurationMinutes(startLocal, endLocal) {
   return diff;
 }
 
+function convertLocalRangeToUtcWithMeta(year, monthIndex, day, startLocal, endLocal) {
+  try {
+    const durationMinutes = computeDurationMinutes(startLocal, endLocal);
+    if (durationMinutes == null) return null;
+
+    const y = Number(year);
+    const m = Number(monthIndex);
+    const d = Number(day);
+    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
+
+    // Стартовое локальное время (HH:MM)
+    const startMin = parseTimeToMinutes(startLocal);
+    if (startMin == null) return null;
+    const hhNum = Math.floor(startMin / 60);
+    const mmNum = startMin % 60;
+
+    const offsetMs = LOCAL_TZ_OFFSET_MIN * 60 * 1000;
+    const baseUtcMs = Date.UTC(y, m, d, hhNum, mmNum);
+    if (!Number.isFinite(baseUtcMs)) return null;
+
+    const startUtcMs = baseUtcMs - offsetMs;
+    const endUtcMs = startUtcMs + durationMinutes * 60 * 1000;
+
+    const startDate = new Date(startUtcMs);
+    const endDate = new Date(endUtcMs);
+    if (!Number.isFinite(startDate.getTime()) || !Number.isFinite(endDate.getTime())) {
+      return null;
+    }
+
+    return {
+      durationMinutes,
+      startUtcIso: startDate.toISOString(),
+      endUtcIso: endDate.toISOString(),
+    };
+  } catch (e) {
+    console.warn("convertLocalRangeToUtcWithMeta: invalid time value", {
+      year,
+      monthIndex,
+      day,
+      startLocal,
+      endLocal,
+      error: String(e && e.message ? e.message : e),
+    });
+    return null;
+  }
+}
+
+// Backwards-compatible wrapper.
 function convertLocalRangeToUtc(day, startLocal, endLocal) {
-  const durationMinutes = computeDurationMinutes(startLocal, endLocal);
-  if (durationMinutes == null) return null;
-
-  const { year, monthIndex } = state.monthMeta;
-  const [hh, mm] = (startLocal || "00:00").split(":");
-
-  const startUtcMs =
-    Date.UTC(year, monthIndex, day, Number(hh), Number(mm)) -
-    LOCAL_TZ_OFFSET_MIN * 60 * 1000;
-  const endUtcMs = startUtcMs + durationMinutes * 60 * 1000;
-
-  return {
-    durationMinutes,
-    startUtcIso: new Date(startUtcMs).toISOString(),
-    endUtcIso: new Date(endUtcMs).toISOString(),
-  };
+  let { year, monthIndex } = state.monthMeta || {};
+  if (!Number.isFinite(Number(year)) || !Number.isFinite(Number(monthIndex))) {
+    const now = new Date();
+    year = now.getFullYear();
+    monthIndex = now.getMonth();
+  }
+  return convertLocalRangeToUtcWithMeta(year, monthIndex, day, startLocal, endLocal);
 }
 
 // -----------------------------
@@ -249,6 +350,12 @@ async function auth(login, password) {
 
   state.auth.user = result.user || null;
   state.auth.permissions = result.permissions || { L1: "view", L2: "view" };
+  // гарантируем ключи вкладок
+  for (const k of ["ALL","OP","OV","OU","AI","L1","L2"]) {
+    if (!Object.prototype.hasOwnProperty.call(state.auth.permissions, k)) {
+      state.auth.permissions[k] = state.auth.permissions.ALL || "view";
+    }
+  }
   return result;
 }
 
@@ -276,8 +383,7 @@ const loginButtonEl = $("#login-button");
 const currentUserLabelEl = $("#current-user-label");
 const currentMonthLabelEl = $("#current-month-label");
 
-const btnLineL1El = $("#btn-line-l1");
-const btnLineL2El = $("#btn-line-l2");
+const lineTabsEl = $("#line-tabs");
 const btnPrevMonthEl = $("#btn-prev-month");
 const btnNextMonthEl = $("#btn-next-month");
 const btnThemeToggleEl = $("#btn-theme-toggle");
@@ -446,32 +552,38 @@ function bindLoginForm() {
   loginButtonEl?.addEventListener("click", handleLogin);
 }
 
+function setCurrentLine(lineKey) {
+  if (!canViewLine(lineKey)) return;
+  state.ui.currentLine = lineKey;
+  updateLineToggleUI();
+  updateSaveButtonState();
+  updateQuickModeForLine();
+  renderQuickTemplateOptions();
+  renderScheduleCurrentLine();
+  if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
+    ShiftColors.renderColorLegend(state.ui.currentLine);
+  }
+}
+
+function renderLineTabs() {
+  if (!lineTabsEl) return;
+  lineTabsEl.innerHTML = "";
+  for (const key of LINE_KEYS_IN_UI_ORDER) {
+    if (!canViewLine(key)) continue;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn toggle";
+    btn.dataset.line = key;
+    btn.textContent = LINE_LABELS[key] || key;
+    btn.addEventListener("click", () => setCurrentLine(key));
+    lineTabsEl.appendChild(btn);
+  }
+  updateLineToggleUI();
+}
+
 function bindTopBarButtons() {
-  btnLineL1El.addEventListener("click", () => {
-    state.ui.currentLine = "L1";
-    updateLineToggleUI();
-    updateSaveButtonState();
-    updateQuickModeForLine();
-    renderQuickTemplateOptions();
-    renderScheduleCurrentLine();
-    if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
-      ShiftColors.renderColorLegend(state.ui.currentLine);
-    }
-  });
-
-  btnLineL2El.addEventListener("click", () => {
-    state.ui.currentLine = "L2";
-    updateLineToggleUI();
-    updateSaveButtonState();
-    updateQuickModeForLine();
-    renderQuickTemplateOptions();
-    renderScheduleCurrentLine();
-    if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
-      ShiftColors.renderColorLegend(state.ui.currentLine);
-    }
-  });
-
-  btnPrevMonthEl.addEventListener("click", () => {
+  renderLineTabs();
+btnPrevMonthEl.addEventListener("click", () => {
     const { year, monthIndex } = state.monthMeta;
     const date = new Date(Date.UTC(year, monthIndex, 1));
     date.setMonth(monthIndex - 1);
@@ -497,18 +609,19 @@ function bindTopBarButtons() {
   if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
     ShiftColors.renderColorLegend(state.ui.currentLine);
   }
+
 }
 
 function updateLineToggleUI() {
   const line = state.ui.currentLine;
-  if (line === "L1") {
-    btnLineL1El.classList.add("active");
-    btnLineL2El.classList.remove("active");
-  } else {
-    btnLineL1El.classList.remove("active");
-    btnLineL2El.classList.add("active");
-  }
+  if (!lineTabsEl) return;
+  const buttons = lineTabsEl.querySelectorAll('button[data-line]');
+  buttons.forEach((b) => {
+    if (b.dataset.line === line) b.classList.add("active");
+    else b.classList.remove("active");
+  });
 }
+
 
 function bindHistoryControls() {
   if (btnClearHistoryEl) {
@@ -1025,7 +1138,12 @@ function handleShiftCellClick({ line, row, day, dayIndex, shift, cellEl }) {
     const { startLocal, endLocal, amount, templateId, specialShortLabel } =
       getQuickModeShift(line);
 
-    if (!startLocal || !endLocal) {
+    // input[type=time] принимает только HH:MM, поэтому нормализуем,
+    // иначе браузер может вернуть пустое значение и дальше сломается конвертация.
+    const normStartLocal = normalizeTimeHHMM(startLocal);
+    const normEndLocal = normalizeTimeHHMM(endLocal);
+
+    if (!normStartLocal || !normEndLocal) {
       alert(
         "Укажите время начала и конца смены в панели быстрого назначения."
       );
@@ -1044,16 +1162,28 @@ function handleShiftCellClick({ line, row, day, dayIndex, shift, cellEl }) {
         : null;
 
     const key = `${line}-${year}-${monthIndex + 1}-${row.employeeId}-${day}`;
-    const conversion = convertLocalRangeToUtc(day, startLocal, endLocal);
+	    // Важно: в быстрых кликах используем year/monthIndex из текущего выбранного месяца,
+	    // иначе state.monthMeta может быть неинициализирован/рассинхронизирован.
+    const conversion = convertLocalRangeToUtcWithMeta(
+      year,
+      monthIndex,
+      day,
+      normStartLocal,
+      normEndLocal
+    );
+	    if (!conversion) {
+	      alert("Некорректное время смены. Проверьте формат (например 08:00–20:00)." );
+	      return;
+	    }
     state.localChanges[key] = {
-      startLocal,
-      endLocal,
+      startLocal: normStartLocal,
+      endLocal: normEndLocal,
       amount,
       templateId,
       specialShortLabel,
-      startUtcIso: conversion?.startUtcIso || null,
-      endUtcIso: conversion?.endUtcIso || null,
-      durationMinutes: conversion?.durationMinutes ?? null,
+	      startUtcIso: conversion.startUtcIso,
+	      endUtcIso: conversion.endUtcIso,
+	      durationMinutes: conversion.durationMinutes,
     };
     persistLocalChanges();
 
@@ -1066,7 +1196,12 @@ function handleShiftCellClick({ line, row, day, dayIndex, shift, cellEl }) {
       employeeName: row.employeeName,
       day,
       previousShift: previousShift || null,
-      nextShift: { startLocal, endLocal, amount, specialShortLabel },
+      nextShift: {
+        startLocal: normStartLocal,
+        endLocal: normEndLocal,
+        amount,
+        specialShortLabel,
+      },
     });
     return;
   }
@@ -1117,42 +1252,106 @@ async function loadEmployees() {
   }
 
   const members = data.members || [];
-  const employeesByLine = { L1: [], L2: [] };
+  const employeesByLine = { ALL: [], OP: [], OV: [], L1: [], L2: [], AI: [], OU: [] };
 
-  for (const m of members) {
-    if (m.banned) continue;
+// Жёсткая маршрутизация по department_id (и отдельный TOP для вкладки "ВСЕ")
+for (const m of members) {
+  if (m.banned) continue;
 
-    const deptName = (m.department_name || "").toLowerCase();
-    const position = (m.position || "").toLowerCase();
+  const deptIdRaw = m.department_id;
+  const deptId = deptIdRaw != null ? Number(deptIdRaw) : null;
 
-    const isL1 =
-      deptName.includes("оператор") ||
-      deptName.includes("контакт-центр") ||
-      position.includes("оператор");
+  const employee = {
+    id: m.id,
+    fullName: `${m.last_name || ""} ${m.first_name || ""}`.trim(),
+    email: m.email || "",
+    departmentName: m.department_name || "",
+    departmentId: deptId,
+    avatarId: m.avatar_id || null,
+    phone: m.phone || "",
+    position: m.position || "",
+    birthDay:
+      m.birth_date && typeof m.birth_date.day === "number"
+        ? m.birth_date.day
+        : m.birth_date && m.birth_date.day
+        ? Number(m.birth_date.day)
+        : null,
+    birthMonth:
+      m.birth_date && typeof m.birth_date.month === "number"
+        ? m.birth_date.month
+        : m.birth_date && m.birth_date.month
+        ? Number(m.birth_date.month)
+        : null,
+  };
 
-    const isL2 =
-      deptName.includes("инженер") ||
-      deptName.includes("техпод") ||
-      deptName.includes("техническая поддержка") ||
-      position.includes("инженер");
+  // ALL: добавляем всех
+  employeesByLine.ALL.push(employee);
 
-    const employee = {
-      id: m.id,
-      fullName: `${m.last_name || ""} ${m.first_name || ""}`.trim(),
-      email: m.email || "",
-      departmentName: m.department_name || "",
-      position: m.position || "",
-    };
+  // Остальные вкладки: по deptId
+  if (deptId != null) {
+    if (LINE_DEPT_IDS.L1.includes(deptId)) employeesByLine.L1.push(employee);
+    if (LINE_DEPT_IDS.L2.includes(deptId)) employeesByLine.L2.push(employee);
+    if (LINE_DEPT_IDS.OV.includes(deptId)) employeesByLine.OV.push(employee);
+    if (LINE_DEPT_IDS.OP.includes(deptId)) employeesByLine.OP.push(employee);
+    if (LINE_DEPT_IDS.OU.includes(deptId)) employeesByLine.OU.push(employee);
+    if (LINE_DEPT_IDS.AI.includes(deptId)) employeesByLine.AI.push(employee);
+  }
+}
 
-    if (isL1) employeesByLine.L1.push(employee);
-    if (isL2) employeesByLine.L2.push(employee);
+const sortEmployeesByName = (arr) =>
+  arr.sort((a, b) => a.fullName.localeCompare(b.fullName, "ru"));
+
+const sortEmployeesByDeptOrder = (arr, deptOrder) => {
+  const orderIndex = new Map(deptOrder.map((id, idx) => [Number(id), idx]));
+  return arr.sort((a, b) => {
+    const ai = orderIndex.has(a.departmentId)
+      ? orderIndex.get(a.departmentId)
+      : Number.MAX_SAFE_INTEGER;
+    const bi = orderIndex.has(b.departmentId)
+      ? orderIndex.get(b.departmentId)
+      : Number.MAX_SAFE_INTEGER;
+    if (ai !== bi) return ai - bi;
+    return a.fullName.localeCompare(b.fullName, "ru");
+  });
+};
+
+// "ВСЕ": сначала TOP_MANAGEMENT_IDS, затем отделы в заданном порядке
+const ALL_DEPT_ORDER = [
+  ...LINE_DEPT_IDS.OP,
+  ...LINE_DEPT_IDS.OV,
+  ...LINE_DEPT_IDS.L1,
+  ...LINE_DEPT_IDS.L2,
+  ...LINE_DEPT_IDS.AI,
+  ...LINE_DEPT_IDS.OU,
+];
+
+const topIndex = new Map(TOP_MANAGEMENT_IDS.map((id, idx) => [Number(id), idx]));
+const allDeptIndex = new Map(ALL_DEPT_ORDER.map((id, idx) => [Number(id), idx]));
+
+employeesByLine.ALL.sort((a, b) => {
+  const at = topIndex.has(a.id) ? topIndex.get(a.id) : null;
+  const bt = topIndex.has(b.id) ? topIndex.get(b.id) : null;
+  if (at != null || bt != null) {
+    if (at == null) return 1;
+    if (bt == null) return -1;
+    return at - bt;
   }
 
-  const sortEmployees = (arr) =>
-    arr.sort((a, b) => a.fullName.localeCompare(b.fullName, "ru"));
+  const ai = a.departmentId != null && allDeptIndex.has(a.departmentId) ? allDeptIndex.get(a.departmentId) : Number.MAX_SAFE_INTEGER;
+  const bi = b.departmentId != null && allDeptIndex.has(b.departmentId) ? allDeptIndex.get(b.departmentId) : Number.MAX_SAFE_INTEGER;
+  if (ai !== bi) return ai - bi;
 
-  state.employeesByLine.L1 = sortEmployees(employeesByLine.L1);
-  state.employeesByLine.L2 = sortEmployees(employeesByLine.L2);
+  // неизвестные dept -> внизу, по имени
+  return a.fullName.localeCompare(b.fullName, "ru");
+});
+
+state.employeesByLine.ALL = employeesByLine.ALL;
+state.employeesByLine.OP = sortEmployeesByDeptOrder(employeesByLine.OP, DEPT_ORDER_BY_LINE.OP);
+state.employeesByLine.OV = sortEmployeesByName(employeesByLine.OV);
+state.employeesByLine.L1 = sortEmployeesByName(employeesByLine.L1);
+state.employeesByLine.L2 = sortEmployeesByDeptOrder(employeesByLine.L2, DEPT_ORDER_BY_LINE.L2);
+state.employeesByLine.AI = sortEmployeesByName(employeesByLine.AI);
+state.employeesByLine.OU = sortEmployeesByName(employeesByLine.OU);
 }
 
 async function loadShiftsCatalog() {
@@ -1175,7 +1374,25 @@ async function loadShiftsCatalog() {
   const idxAmount = colIndexByName["Сумма за смену"];
   const idxDept = colIndexByName["Отдел"];
 
-  const templatesByLine = { L1: [], L2: [] };
+  const templatesByLine = { ALL: [], OP: [], OV: [], L1: [], L2: [], AI: [], OU: [] };
+
+  // "Отдел" в справочнике смен может быть списком: "L1, L2, OP, OV".
+  // Поддерживаем также старые форматы (через "/") и русские сокращения (ОВ/ОП/ОУ/ВСЕ).
+  function parseDeptTokens(raw) {
+    if (!raw) return [];
+    return String(raw)
+      .split(/[,/]/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((s) => {
+        const u = s.toUpperCase();
+        if (u === "ОВ") return "OV";
+        if (u === "ОП") return "OP";
+        if (u === "ОУ") return "OU";
+        if (u === "ВСЕ") return "ALL";
+        return u;
+      });
+  }
 
   for (const item of items) {
     const values = item.values || [];
@@ -1201,13 +1418,35 @@ async function loadShiftsCatalog() {
       specialShortLabel,
     };
 
-    const deptUpper = dept.toUpperCase();
-    if (deptUpper.includes("L1")) templatesByLine.L1.push(template);
-    if (deptUpper.includes("L2")) templatesByLine.L2.push(template);
+    const tokens = parseDeptTokens(dept);
+
+    const pushTo = (key) => {
+      if (templatesByLine[key]) templatesByLine[key].push(template);
+    };
+
+    // ALL = показывать смену во всех вкладках/линиях
+    const hasAll = tokens.includes("ALL");
+    if (hasAll) {
+      for (const key of ["ALL", "OP", "OV", "L1", "L2", "AI", "OU"]) pushTo(key);
+      continue;
+    }
+
+    // Точный матч токенов (без includes), чтобы избежать ложных совпадений.
+    if (tokens.includes("L1")) pushTo("L1");
+    if (tokens.includes("L2")) pushTo("L2");
+    if (tokens.includes("OV")) pushTo("OV");
+    if (tokens.includes("OP")) pushTo("OP");
+    if (tokens.includes("OU")) pushTo("OU");
+    if (tokens.includes("AI")) pushTo("AI");
+    // Если по каким-то причинам в справочнике остался токен ALL только для вкладки ВСЕ
+    // (без распределения по линиям), его можно явно указать как "ALL".
+    if (tokens.includes("ALL")) pushTo("ALL");
   }
 
-  state.shiftTemplatesByLine.L1 = templatesByLine.L1;
-  state.shiftTemplatesByLine.L2 = templatesByLine.L2;
+  // записываем в state все линии
+  for (const key of ["ALL","OP","OV","L1","L2","AI","OU"]) {
+    state.shiftTemplatesByLine[key] = templatesByLine[key] || [];
+  }
 
   // Инициализация цветов смен
   if (typeof ShiftColors !== 'undefined' && ShiftColors.initialize) {
@@ -1215,24 +1454,153 @@ async function loadShiftsCatalog() {
   }
 }
 
+
+
+async function loadVacationsForMonth(year, monthIndex) {
+  const raw = await pyrusApi("/v4/forms/2348174/register", "GET");
+  const data = unwrapPyrusData(raw);
+  const wrapper = Array.isArray(data) ? data[0] : data;
+  const tasks = (wrapper && wrapper.tasks) || [];
+
+  const vacationsByEmployee = Object.create(null);
+  const offsetMs = LOCAL_TZ_OFFSET_MIN * 60 * 1000;
+
+  const monthStartShiftedMs = Date.UTC(year, monthIndex, 1, 0, 0, 0, 0);
+  const monthEndShiftedMs = Date.UTC(year, monthIndex + 1, 1, 0, 0, 0, 0);
+  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+
+  const fmt = (shiftedMs) => {
+    const d = new Date(shiftedMs);
+    const dd = String(d.getUTCDate()).padStart(2, "0");
+    const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+    const yy = d.getUTCFullYear();
+    return dd + "." + mm + "." + yy;
+  };
+
+  const isMidnight = (shiftedMs) => {
+    const d = new Date(shiftedMs);
+    return (
+      d.getUTCHours() === 0 &&
+      d.getUTCMinutes() === 0 &&
+      d.getUTCSeconds() === 0 &&
+      d.getUTCMilliseconds() === 0
+    );
+  };
+
+  for (const task of tasks) {
+    const fields = task.fields || [];
+    const personField = fields.find((f) => f && f.id === 1 && f.type === "person");
+    const periodField = fields.find((f) => f && f.id === 2 && f.type === "due_date_time");
+    if (!personField || !periodField) continue;
+
+    const empId = personField.value && personField.value.id;
+    if (!empId) continue;
+
+    const startIso = periodField.value;
+    const durationMin = Number(periodField.duration || 0);
+    if (!startIso || !durationMin) continue;
+
+    const startUtcMs = new Date(startIso).getTime();
+    if (Number.isNaN(startUtcMs)) continue;
+    const endUtcMs = startUtcMs + durationMin * 60 * 1000;
+
+    // Работаем в "смещённом" пространстве (utcMs + offset)
+    const startShiftedMs = startUtcMs + offsetMs;
+    const endShiftedMs = endUtcMs + offsetMs;
+
+    // Клип по текущему месяцу
+    const segStart = Math.max(startShiftedMs, monthStartShiftedMs);
+    const segEnd = Math.min(endShiftedMs, monthEndShiftedMs);
+    if (segStart >= segEnd) continue;
+
+    const startDay = new Date(segStart).getUTCDate();
+
+    // Диапазон [start, end)
+    const endDate = new Date(segEnd);
+    let endDayExclusive;
+    if (endDate.getUTCMonth() !== monthIndex) {
+      endDayExclusive = daysInMonth + 1;
+    } else {
+      endDayExclusive = endDate.getUTCDate();
+      if (!isMidnight(segEnd)) endDayExclusive += 1;
+    }
+
+    endDayExclusive = Math.max(1, Math.min(daysInMonth + 1, endDayExclusive));
+
+    // Для отображения: конец включительно
+    let endLabelShiftedMs = endShiftedMs;
+    if (isMidnight(endShiftedMs)) endLabelShiftedMs = endShiftedMs - 1;
+
+    (vacationsByEmployee[empId] = vacationsByEmployee[empId] || []).push({
+      startDay,
+      endDayExclusive,
+      startLabel: fmt(startShiftedMs),
+      endLabel: fmt(endLabelShiftedMs),
+    });
+  }
+
+  // Сортируем отпуска каждого сотрудника по началу
+  for (const empId of Object.keys(vacationsByEmployee)) {
+    vacationsByEmployee[empId].sort((a, b) => (a.startDay || 0) - (b.startDay || 0));
+  }
+
+  return vacationsByEmployee;
+}
 async function reloadScheduleForCurrentMonth() {
   const { year, monthIndex } = state.monthMeta;
 
   const raw = await pyrusApi("/v4/forms/2375272/register", "GET");
   const data = unwrapPyrusData(raw);
 
+  // Отпуска: внешняя система, только отображение
+  try {
+    state.vacationsByEmployee = await loadVacationsForMonth(year, monthIndex);
+  } catch (e) {
+    console.warn('Не удалось загрузить отпуска', e);
+    state.vacationsByEmployee = {};
+  }
+
   const wrapper = Array.isArray(data) ? data[0] : data;
   const tasks = (wrapper && wrapper.tasks) || [];
 
   const scheduleByLine = {
+    ALL: { days: [], rows: [], monthKey: null },
+    OP: { days: [], rows: [], monthKey: null },
+    OV: { days: [], rows: [], monthKey: null },
     L1: { days: [], rows: [], monthKey: null },
     L2: { days: [], rows: [], monthKey: null },
+    AI: { days: [], rows: [], monthKey: null },
+    OU: { days: [], rows: [], monthKey: null },
   };
   const monthKey = `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
 
-  const shiftMapByLine = {
-    L1: Object.create(null),
-    L2: Object.create(null),
+  const shiftMapByLine = { ALL: Object.create(null), OP: Object.create(null), OV: Object.create(null), L1: Object.create(null), L2: Object.create(null), AI: Object.create(null), OU: Object.create(null) };
+
+  // "Отдел" в значении смены из справочника может быть списком токенов
+  // (например: "L1, L2, OP" или "L1/L2/OP").
+  // Нормализуем токены в ключи вкладок.
+  const parseDeptTokens = (raw) => {
+    if (!raw) return [];
+    return String(raw)
+      .split(/[,/]/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((s) => {
+        const u = s.toUpperCase();
+        if (u === "ОВ") return "OV";
+        if (u === "ОП") return "OP";
+        if (u === "ОУ") return "OU";
+        if (u === "ВСЕ") return "ALL";
+        return u;
+      });
+  };
+
+  const inferLineFromEmployee = (empId) => {
+    for (const k of ["OP","OV","L1","L2","AI","OU"]) {
+      const list = state.employeesByLine[k] || [];
+      if (list.some((e) => e.id === empId)) return k;
+    }
+    return null;
   };
 
   const findField = (fields, id) => fields.find((f) => f.id === id);
@@ -1270,25 +1638,37 @@ async function reloadScheduleForCurrentMonth() {
     if (!empId) continue;
 
     const shiftCatalog = shiftField.value || {};
-    const dept = String(
-      (shiftCatalog.values && shiftCatalog.values[4]) || ""
-    ).toUpperCase();
+    const deptRaw = (shiftCatalog.values && shiftCatalog.values[4]) || "";
+    const tokens = parseDeptTokens(deptRaw);
 
-    let line = null;
-    if (dept.includes("L1") && !dept.includes("L2")) line = "L1";
-    else if (dept.includes("L2") && !dept.includes("L1")) line = "L2";
-    else if (dept.includes("L1") && dept.includes("L2")) line = "L1";
-    else continue;
+    // Определяем, в какие вкладки раскладывать смену.
+    // - ALL => во все вкладки
+    // - список токенов => во все соответствующие вкладки
+    // - если токены не распознаны => пытаемся вывести по департаменту сотрудника
+    let targetLines = [];
+    if (tokens.includes("ALL")) {
+      targetLines = ["OP","OV","L1","L2","AI","OU"];
+    } else {
+      targetLines = tokens.filter((t) => shiftMapByLine[t]);
+    }
+    if (!targetLines.length) {
+      const inferred = inferLineFromEmployee(empId);
+      if (inferred) targetLines = [inferred];
+    }
 
     const shiftItemId =
       shiftCatalog.item_id != null ? shiftCatalog.item_id : shiftCatalog.id;
 
-    const matchingTemplate =
-      shiftItemId != null && line
-        ? (state.shiftTemplatesByLine[line] || []).find(
-            (t) => t.id === shiftItemId
-          )
-        : null;
+    // specialShortLabel может зависеть от вкладки (шаблонов),
+    // но для отображения достаточно любого совпадения.
+    let matchingTemplate = null;
+    for (const l of targetLines) {
+      matchingTemplate =
+        shiftItemId != null
+          ? (state.shiftTemplatesByLine[l] || []).find((t) => t.id === shiftItemId)
+          : null;
+      if (matchingTemplate) break;
+    }
     const specialShortLabel =
       (matchingTemplate && matchingTemplate.specialShortLabel) || null;
 
@@ -1297,10 +1677,7 @@ async function reloadScheduleForCurrentMonth() {
         ? moneyField.value
         : Number(moneyField.value || 0);
 
-    const map = shiftMapByLine[line];
-    if (!map[empId]) map[empId] = {};
-
-    map[empId][d] = {
+    const entry = {
       startLocal,
       endLocal,
       amount,
@@ -1314,6 +1691,19 @@ async function reloadScheduleForCurrentMonth() {
       rawShift: shiftCatalog,
       specialShortLabel,
     };
+
+    const putToMap = (key) => {
+      const map = shiftMapByLine[key];
+      if (!map) return;
+      if (!map[empId]) map[empId] = {};
+      map[empId][d] = entry;
+    };
+
+    for (const l of targetLines) {
+      if (l && shiftMapByLine[l]) putToMap(l);
+    }
+    // "ВСЕ" всегда содержит весь график
+    putToMap("ALL");
   }
 
   const days = [];
@@ -1322,7 +1712,7 @@ async function reloadScheduleForCurrentMonth() {
     days.push(d);
   }
 
-  for (const line of ["L1", "L2"]) {
+  for (const line of ["ALL","OP","OV","L1","L2","AI","OU"]) {
     const empList = state.employeesByLine[line] || [];
     const map = shiftMapByLine[line];
 
@@ -1334,6 +1724,8 @@ async function reloadScheduleForCurrentMonth() {
       return {
         employeeId: emp.id,
         employeeName: emp.fullName,
+        birthDay: emp.birthDay ?? null,
+        birthMonth: emp.birthMonth ?? null,
         shiftsByDay,
       };
     });
@@ -1435,11 +1827,119 @@ function renderScheduleCurrentLine() {
 
     let totalAmount = 0;
 
-    row.shiftsByDay.forEach((shift, dayIndex) => {
+    const vacations = state.vacationsByEmployee[row.employeeId] || [];
+    const vacationStarts = Object.create(null);
+    for (const v of vacations) {
+      if (v && typeof v.startDay === "number") {
+        vacationStarts[v.startDay] = v;
+      }
+    }
+
+    // День рождения (ежегодно): показываем в текущем месяце, если есть day/month.
+    const birthdayDayThisMonth =
+      row.birthMonth && row.birthDay && row.birthMonth === monthIndex + 1
+        ? row.birthDay
+        : null;
+
+    let dayIndex = 0;
+    while (dayIndex < row.shiftsByDay.length) {
+      const dayNumber = sched.days[dayIndex];
+      const vac = vacationStarts[dayNumber];
+
+      if (vac) {
+        const len = Math.max(1, (vac.endDayExclusive || (vac.startDay + 1)) - vac.startDay);
+
+        const td = document.createElement("td");
+        td.className = "shift-cell vacation-cell";
+        td.colSpan = len;
+
+        const pill = document.createElement("div");
+        pill.className = "vacation-pill";
+        // Текст внутри полосы (оставляем как метку, но не мешаем бейджам поверх)
+        const vacLabel = document.createElement("span");
+        vacLabel.className = "vacation-label";
+        vacLabel.textContent = "ОТП";
+        pill.title = `Отпуск: с ${vac.startLabel} по ${vac.endLabel}`;
+
+        pill.appendChild(vacLabel);
+
+        // Если день рождения попадает внутрь отпуска (в текущем месяце) —
+        // показываем маркер "ДР" поверх отпускной полосы.
+        if (
+          typeof birthdayDayThisMonth === "number" &&
+          birthdayDayThisMonth >= vac.startDay &&
+          birthdayDayThisMonth < (vac.endDayExclusive || vac.startDay + 1)
+        ) {
+          const b = document.createElement("div");
+          b.className = "birthday-pill birthday-pill-in-vacation";
+          b.textContent = "ДР";
+          const leftPercent = ((birthdayDayThisMonth - vac.startDay) + 0.5) / len * 100;
+          b.style.left = `${leftPercent}%`;
+          b.title = `День рождения: ${formatBirthdayLabel(birthdayDayThisMonth, monthIndex + 1)}`;
+          b.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            openBirthdayPopover(
+              {
+                employeeName: row.employeeName,
+                dateLabel: formatBirthdayLabel(birthdayDayThisMonth, monthIndex + 1),
+              },
+              b
+            );
+          });
+          pill.appendChild(b);
+        }
+
+        td.appendChild(pill);
+
+        td.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          openVacationPopover(
+            {
+              employeeName: row.employeeName,
+              startLabel: vac.startLabel,
+              endLabel: vac.endLabel,
+            },
+            td
+          );
+        });
+
+        td.addEventListener("mouseenter", () => {
+          tr.classList.add("row-hover");
+        });
+        td.addEventListener("mouseleave", () => {
+          tr.classList.remove("row-hover");
+        });
+
+        tr.appendChild(td);
+        dayIndex += len;
+        continue;
+      }
+
+      const shift = row.shiftsByDay[dayIndex];
+
       const td = document.createElement("td");
       td.className = "shift-cell";
-      if (weekendDays.has(sched.days[dayIndex])) {
+      if (weekendDays.has(dayNumber)) {
         td.classList.add("day-off");
+      }
+
+      // Маркер дня рождения (один день). Показываем даже если в этот день есть смена.
+      if (typeof birthdayDayThisMonth === "number" && birthdayDayThisMonth === dayNumber) {
+        const b = document.createElement("div");
+        b.className = "birthday-pill";
+        b.textContent = "ДР";
+        b.title = `День рождения: ${formatBirthdayLabel(dayNumber, monthIndex + 1)}`;
+        b.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          openBirthdayPopover(
+            {
+              employeeName: row.employeeName,
+              dateLabel: formatBirthdayLabel(dayNumber, monthIndex + 1),
+            },
+            b
+          );
+        });
+        td.appendChild(b);
       }
 
       if (shift) {
@@ -1496,7 +1996,9 @@ function renderScheduleCurrentLine() {
       });
 
       tr.appendChild(td);
-    });
+      dayIndex += 1;
+    }
+
 
     const tdSum = document.createElement("td");
     tdSum.className = "summary-cell";
@@ -1548,6 +2050,149 @@ function closeShiftPopover() {
   }, 140);
 }
 
+function formatBirthdayLabel(day, month) {
+  const dd = String(day).padStart(2, "0");
+  const mm = String(month).padStart(2, "0");
+  return `${dd}.${mm}`;
+}
+
+function openBirthdayPopover(context, anchorEl) {
+  const { employeeName, dateLabel } = context;
+
+  shiftPopoverEl.innerHTML = `
+    <div class="shift-popover-header">
+      <div>
+        <div class="shift-popover-title">${employeeName}</div>
+        <div class="shift-popover-subtitle">День рождения • только просмотр</div>
+      </div>
+      <button class="shift-popover-close" type="button">✕</button>
+    </div>
+
+    <div class="shift-popover-body">
+      <div class="shift-popover-section">
+        <div class="shift-popover-section-title">Дата</div>
+        <div class="field-row"><label>день:</label><div>${dateLabel}</div></div>
+      </div>
+      <div class="shift-popover-note">Данные дня рождения загружаются из списка сотрудников и не редактируются здесь.</div>
+    </div>
+
+    <div class="shift-popover-footer">
+      <button class="btn" type="button" id="shift-btn-close-birthday">Закрыть</button>
+    </div>
+  `;
+
+  shiftPopoverBackdropEl.classList.remove("hidden");
+  shiftPopoverEl.classList.remove("hidden");
+
+  const rect = anchorEl.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+
+  const estimatedWidth = 420;
+  const estimatedHeight = 220;
+
+  let left = rect.left + 8;
+  let top = rect.bottom + 8;
+
+  if (left + estimatedWidth > viewportWidth - 16) {
+    left = viewportWidth - estimatedWidth - 16;
+  }
+  if (top + estimatedHeight > viewportHeight - 16) {
+    top = rect.top - estimatedHeight - 8;
+  }
+
+  left = Math.max(left, 16);
+  top = Math.max(top, 16);
+
+  shiftPopoverEl.style.left = `${left}px`;
+  shiftPopoverEl.style.top = `${top}px`;
+
+  const closeBtn = shiftPopoverEl.querySelector(".shift-popover-close");
+  const closeBtn2 = shiftPopoverEl.querySelector("#shift-btn-close-birthday");
+  const doClose = () => closeShiftPopover();
+  if (closeBtn) closeBtn.addEventListener("click", doClose);
+  if (closeBtn2) closeBtn2.addEventListener("click", doClose);
+
+  shiftPopoverKeydownHandler = (ev) => {
+    if (ev.key === "Escape") doClose();
+  };
+  document.addEventListener("keydown", shiftPopoverKeydownHandler);
+
+  requestAnimationFrame(() => {
+    shiftPopoverEl.classList.add("open");
+  });
+}
+
+
+
+function openVacationPopover(context, anchorEl) {
+  const { employeeName, startLabel, endLabel } = context;
+
+  shiftPopoverEl.innerHTML = `
+    <div class="shift-popover-header">
+      <div>
+        <div class="shift-popover-title">${employeeName}</div>
+        <div class="shift-popover-subtitle">Отпуск • только просмотр</div>
+      </div>
+      <button class="shift-popover-close" type="button">✕</button>
+    </div>
+
+    <div class="shift-popover-body">
+      <div class="shift-popover-section">
+        <div class="shift-popover-section-title">Период</div>
+        <div class="field-row"><label>с:</label><div>${startLabel}</div></div>
+        <div class="field-row"><label>по:</label><div>${endLabel}</div></div>
+      </div>
+      <div class="shift-popover-note">Отпуск загружается из внешней системы и не редактируется здесь.</div>
+    </div>
+
+    <div class="shift-popover-footer">
+      <button class="btn" type="button" id="shift-btn-close-vacation">Закрыть</button>
+    </div>
+  `;
+
+  shiftPopoverBackdropEl.classList.remove("hidden");
+  shiftPopoverEl.classList.remove("hidden");
+
+  const rect = anchorEl.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+
+  const estimatedWidth = 420;
+  const estimatedHeight = 240;
+
+  let left = rect.left + 8;
+  let top = rect.bottom + 8;
+
+  if (left + estimatedWidth > viewportWidth - 16) {
+    left = viewportWidth - estimatedWidth - 16;
+  }
+  if (top + estimatedHeight > viewportHeight - 16) {
+    top = rect.top - estimatedHeight - 8;
+  }
+
+  left = Math.max(left, 16);
+  top = Math.max(top, 16);
+
+  shiftPopoverEl.style.left = `${left}px`;
+  shiftPopoverEl.style.top = `${top}px`;
+
+  const closeBtn = shiftPopoverEl.querySelector(".shift-popover-close");
+  const closeBtn2 = shiftPopoverEl.querySelector("#shift-btn-close-vacation");
+
+  const doClose = () => closeShiftPopover();
+  if (closeBtn) closeBtn.addEventListener("click", doClose);
+  if (closeBtn2) closeBtn2.addEventListener("click", doClose);
+
+  shiftPopoverKeydownHandler = (ev) => {
+    if (ev.key === "Escape") doClose();
+  };
+  document.addEventListener("keydown", shiftPopoverKeydownHandler);
+
+  requestAnimationFrame(() => {
+    shiftPopoverEl.classList.add("open");
+  });
+}
 function openShiftPopoverReadOnly(context, anchorEl) {
   const { line, employeeName, day, shift } = context;
   const { year, monthIndex } = state.monthMeta;
@@ -1795,8 +2440,8 @@ function openShiftPopover(context, anchorEl) {
           const startInput = document.getElementById("shift-start-input");
           const endInput = document.getElementById("shift-end-input");
           if (startInput && endInput) {
-            startInput.value = tmpl.timeRange.start;
-            endInput.value = tmpl.timeRange.end;
+	        startInput.value = normalizeTimeHHMM(tmpl.timeRange.start);
+	        endInput.value = normalizeTimeHHMM(tmpl.timeRange.end);
           }
         }
 
@@ -1814,24 +2459,30 @@ function openShiftPopover(context, anchorEl) {
       const endInput = document.getElementById("shift-end-input");
       const amountInput = document.getElementById("shift-amount-input");
 
-      const start = startInput.value;
-      const end = endInput.value;
+	    const start = normalizeTimeHHMM(startInput.value);
+	    const end = normalizeTimeHHMM(endInput.value);
       const amount = Number(amountInput.value || 0);
 
       const key = `${line}-${year}-${monthIndex + 1}-${employeeId}-${day}`;
       const templateId =
         selectedTemplateId != null ? selectedTemplateId : shift?.templateId;
       const specialShortLabel = resolveSpecialShortLabel(line, templateId);
-      const conversion = convertLocalRangeToUtc(day, start, end);
+	      // В поповере всегда есть year/monthIndex выбранного месяца — используем их,
+	      // чтобы не ловить RangeError на невалидном state.monthMeta.
+	      const conversion = convertLocalRangeToUtcWithMeta(year, monthIndex, day, start, end);
+	      if (!conversion) {
+	        alert("Некорректное время смены. Проверьте формат (например 08:00–20:00)." );
+	        return;
+	      }
       state.localChanges[key] = {
         startLocal: start,
         endLocal: end,
         amount,
         templateId,
         specialShortLabel,
-        startUtcIso: conversion?.startUtcIso || null,
-        endUtcIso: conversion?.endUtcIso || null,
-        durationMinutes: conversion?.durationMinutes ?? null,
+	        startUtcIso: conversion.startUtcIso,
+	        endUtcIso: conversion.endUtcIso,
+	        durationMinutes: conversion.durationMinutes,
       };
       persistLocalChanges();
 
@@ -1856,7 +2507,7 @@ function openShiftPopover(context, anchorEl) {
 }
 
 function applyLocalChangesToSchedule() {
-  for (const line of ["L1", "L2"]) {
+  for (const line of ["ALL","OP","OV","L1","L2","AI","OU"]) {
     const sched = state.scheduleByLine[line];
     if (!sched || !sched.rows) continue;
 

@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
-  <title>График смен L1/L2</title>
+  <title>График смен</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="css/styles.css" />
 </head>
@@ -10,7 +10,7 @@
   <div id="app">
     <!-- Экран логина -->
     <div id="login-screen" class="card">
-      <h1>График смен L1/L2</h1>
+      <h1>График смен</h1>
       <p class="muted">Вход по логину и паролю (через n8n <code>/graph</code>).</p>
 
       <form id="login-form">
@@ -39,7 +39,7 @@
     <div id="main-screen" class="hidden">
       <div class="top-bar">
         <div>
-          <h2>График смен L1/L2</h2>
+          <h2>График смен</h2>
           <div id="current-user-label" class="muted"></div>
         </div>
 
@@ -47,8 +47,7 @@
           <button type="button" class="btn toggle" id="btn-theme-toggle">
             🌙 Тема
           </button>
-          <button type="button" class="btn toggle" id="btn-line-l1">L1</button>
-          <button type="button" class="btn toggle" id="btn-line-l2">L2</button>
+          <div id="line-tabs" class="line-tabs"></div>
 
           <div class="month-switcher">
             <button type="button" class="btn toggle" id="btn-prev-month">
