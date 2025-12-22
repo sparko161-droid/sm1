@@ -1977,12 +1977,14 @@ function renderScheduleCurrentLine() {
         td.classList.add("empty-shift");
       }
 
+      const clickDay = dayNumber;
+      const clickDayIndex = dayIndex;
       td.addEventListener("click", () => {
         handleShiftCellClick({
           line,
           row,
-          day: sched.days[dayIndex],
-          dayIndex,
+          day: clickDay,
+          dayIndex: clickDayIndex,
           shift: shift || null,
           cellEl: td,
         });
