@@ -172,6 +172,96 @@ function canViewLine(line) {
   return permission === "view" || permission === "edit";
 }
 
+
+// -----------------------------
+// Персистентная авторизация (localStorage + cookie)
+// -----------------------------
+
+const AUTH_STORAGE_KEY = "sm_graph_auth_v1";
+const AUTH_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 дней
+
+function setCookie(name, value, days) {
+  try {
+    const expires = new Date(Date.now() + days * 86400000).toUTCString();
+    document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
+  } catch (_) {}
+}
+
+function getCookie(name) {
+  try {
+    const m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[.$?*|{}()\[\]\\\/\+^]/g, '\\$&') + '=([^;]*)'));
+    return m ? decodeURIComponent(m[1]) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function clearCookie(name) {
+  try {
+    document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax`;
+  } catch (_) {}
+}
+
+function saveAuthCache(login) {
+  // пароль не сохраняем
+  const payload = {
+    savedAt: Date.now(),
+    login: login || "",
+    user: state.auth.user || null,
+    permissions: state.auth.permissions || null,
+  };
+  try {
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(payload));
+  } catch (_) {}
+  // Дублируем в cookie (минимальный объём) — на случай очистки localStorage
+  setCookie(AUTH_STORAGE_KEY, JSON.stringify(payload), 7);
+}
+
+function loadAuthCache() {
+  let raw = null;
+  try {
+    raw = localStorage.getItem(AUTH_STORAGE_KEY);
+  } catch (_) {}
+  if (!raw) raw = getCookie(AUTH_STORAGE_KEY);
+  if (!raw) return null;
+
+  try {
+    const data = JSON.parse(raw);
+    if (!data || !data.savedAt) return null;
+    if (Date.now() - data.savedAt > AUTH_TTL_MS) return null;
+    return data;
+  } catch (_) {
+    return null;
+  }
+}
+
+function clearAuthCache() {
+  try {
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+  } catch (_) {}
+  clearCookie(AUTH_STORAGE_KEY);
+}
+
+function applyAuthCache(data) {
+  if (!data) return false;
+  state.auth.user = data.user || null;
+  state.auth.permissions = data.permissions || state.auth.permissions;
+  // гарантируем ключи вкладок
+  for (const k of ["ALL","OP","OV","OU","AI","L1","L2"]) {
+    if (!Object.prototype.hasOwnProperty.call(state.auth.permissions, k)) {
+      state.auth.permissions[k] = state.auth.permissions.ALL || "view";
+    }
+  }
+  const login = (data.login || state.auth.user?.login || "").trim();
+  if (currentUserLabelEl) {
+    currentUserLabelEl.textContent = `${state.auth.user?.name || ""}${login ? " (" + login + ")" : ""}`;
+  }
+  // сохраняем сессию независимо от наличия UI-элементов
+  if (login || state.auth.user?.login) saveAuthCache(login);
+
+  return true;
+}
+
 function getCurrentLinePermission() {
   return state.auth.permissions[state.ui.currentLine];
 }
@@ -370,7 +460,7 @@ async function auth(login, password) {
   }
 
   state.auth.user = result.user || null;
-  state.auth.permissions = result.permissions || { L1: "view", L2: "view" };
+  state.auth.permissions = result.permissions || { ALL: "view", OP: "view", OV: "view", OU: "view", AI: "view", L1: "view", L2: "view" };
   // гарантируем ключи вкладок
   for (const k of ["ALL","OP","OV","OU","AI","L1","L2"]) {
     if (!Object.prototype.hasOwnProperty.call(state.auth.permissions, k)) {
@@ -480,6 +570,7 @@ const lineTabsEl = $("#line-tabs");
 const btnPrevMonthEl = $("#btn-prev-month");
 const btnNextMonthEl = $("#btn-next-month");
 const btnThemeToggleEl = $("#btn-theme-toggle");
+const btnLogoutEl = $("#btn-logout");
 const btnSavePyrusEl = $("#btn-save-pyrus");
 
 const scheduleRootEl = $("#schedule-root");
@@ -505,10 +596,29 @@ function init() {
   initTheme();
   initMonthMetaToToday();
   bindLoginForm();
+
+  // Автовосстановление сессии (без повторного ввода пароля)
+  const cachedAuth = loadAuthCache();
+  if (cachedAuth && applyAuthCache(cachedAuth)) {
+    loginScreenEl?.classList.add("hidden");
+    mainScreenEl?.classList.remove("hidden");
+  }
+
   bindTopBarButtons();
   bindHistoryControls();
   createShiftPopover();
   renderChangeLog();
+
+  // Если восстановили сессию — загружаем данные как после логина
+  if (state.auth.user && mainScreenEl && !mainScreenEl.classList.contains("hidden")) {
+    loadInitialData().catch((err) => {
+      console.error("Auto-login loadInitialData error:", err);
+      clearAuthCache();
+      mainScreenEl.classList.add("hidden");
+      loginScreenEl?.classList.remove("hidden");
+      if (loginErrorEl) loginErrorEl.textContent = "Сессия истекла — войдите снова";
+    });
+  }
 }
 
 function getCurrentLineTemplates() {
@@ -629,6 +739,17 @@ function bindLoginForm() {
         authResult.user?.name || ""
       } (${login})`;
 
+      // кэшируем авторизацию, чтобы не логиниться после обновления страницы
+      saveAuthCache(login);
+
+
+      renderLineTabs();
+      updateLineToggleUI();
+      // если текущая вкладка недоступна — переключимся на первую доступную
+      if (!canViewLine(state.ui.currentLine)) {
+        const first = LINE_KEYS_IN_UI_ORDER.find((k) => canViewLine(k));
+        if (first) state.ui.currentLine = first;
+      }
       loginScreenEl.classList.add("hidden");
       mainScreenEl.classList.remove("hidden");
 
@@ -676,6 +797,16 @@ function renderLineTabs() {
 
 function bindTopBarButtons() {
   renderLineTabs();
+
+  btnLogoutEl?.addEventListener("click", () => {
+    clearAuthCache();
+    state.auth.user = null;
+    state.auth.permissions = { ALL: "view", OP: "view", OV: "view", OU: "view", AI: "view", L1: "view", L2: "view" };
+    mainScreenEl?.classList.add("hidden");
+    loginScreenEl?.classList.remove("hidden");
+    if (loginErrorEl) loginErrorEl.textContent = "";
+    updateLineToggleUI();
+  });
 btnPrevMonthEl.addEventListener("click", () => {
     const { year, monthIndex } = state.monthMeta;
     const date = new Date(Date.UTC(year, monthIndex, 1));
