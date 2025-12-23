@@ -387,6 +387,78 @@ async function pyrusApi(path, method = "GET", body = null) {
 }
 
 // -----------------------------
+// Производственный календарь РФ (isdayoff.ru) — помесячно, с кэшем и фолбеком на СБ/ВС
+// -----------------------------
+const PROD_CAL_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 дней
+
+function prodCalCacheKey(year, monthIndex) {
+  const mm = String(monthIndex + 1).padStart(2, "0");
+  return `prodcal_ru_${year}-${mm}_pre1`;
+}
+
+function formatYmdForKey(year, monthIndex, day) {
+  const mm = String(monthIndex + 1).padStart(2, "0");
+  const dd = String(day).padStart(2, "0");
+  return `${year}-${mm}-${dd}`;
+}
+
+function formatYmdCompact(year, monthIndex, day) {
+  const mm = String(monthIndex + 1).padStart(2, "0");
+  const dd = String(day).padStart(2, "0");
+  return `${year}${mm}${dd}`;
+}
+
+async function loadProdCalendarForMonth(year, monthIndex) {
+  const cacheKey = prodCalCacheKey(year, monthIndex);
+  try {
+    const cachedRaw = localStorage.getItem(cacheKey);
+    if (cachedRaw) {
+      const cached = JSON.parse(cachedRaw);
+      if (cached && cached.fetchedAt && (Date.now() - cached.fetchedAt) < PROD_CAL_TTL_MS && cached.dayTypeByDay) {
+        return cached;
+      }
+    }
+  } catch (_) {
+    // ignore cache errors
+  }
+
+  const lastDay = new Date(year, monthIndex + 1, 0).getDate();
+  const date1 = formatYmdCompact(year, monthIndex, 1);
+  const date2 = formatYmdCompact(year, monthIndex, lastDay);
+
+  const url = `https://isdayoff.ru/api/getdata?date1=${date1}&date2=${date2}&cc=ru&pre=1`;
+
+  const resp = await fetch(url, { method: "GET" });
+  const text = (await resp.text()).trim();
+
+  // Возможные ошибки: 100/101/199
+  if (!resp.ok || /^(100|101|199)$/.test(text) || text.length < lastDay) {
+    throw new Error(`ProdCal error: ${resp.status} ${text}`);
+  }
+
+  const dayTypeByDay = Object.create(null);
+  for (let d = 1; d <= lastDay; d++) {
+    const ch = text[d - 1];
+    const code = ch === "0" ? 0 : ch === "1" ? 1 : ch === "2" ? 2 : null;
+    if (code !== null) dayTypeByDay[d] = code;
+  }
+
+  const payload = {
+    monthKey: `${year}-${String(monthIndex + 1).padStart(2, "0")}`,
+    fetchedAt: Date.now(),
+    dayTypeByDay,
+  };
+
+  try {
+    localStorage.setItem(cacheKey, JSON.stringify(payload));
+  } catch (_) {
+    // ignore storage quota / privacy mode
+  }
+
+  return payload;
+}
+
+// -----------------------------
 // DOM-ссылки
 // -----------------------------
 
@@ -1586,6 +1658,14 @@ async function reloadScheduleForCurrentMonth() {
     state.vacationsByEmployee = {};
   }
 
+  // Производственный календарь РФ: помесячно (isdayoff.ru), с кэшем и фолбеком на СБ/ВС
+  try {
+    state.prodCalendar = await loadProdCalendarForMonth(year, monthIndex);
+  } catch (e) {
+    console.warn('Не удалось загрузить производственный календарь РФ, используем фолбек СБ/ВС', e);
+    state.prodCalendar = null;
+  }
+
   const wrapper = Array.isArray(data) ? data[0] : data;
   const tasks = (wrapper && wrapper.tasks) || [];
 
@@ -1805,25 +1885,35 @@ function renderScheduleCurrentLine() {
 
   const weekdayNames = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
   const { year, monthIndex } = state.monthMeta;
-  const weekendDays = new Set();
+  const monthKey = `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
+  const weekendDays = new Set(); // фактически "выходные дни" (по производственному календарю или фолбек СБ/ВС)
+
+  const prod = state.prodCalendar && state.prodCalendar.monthKey === monthKey ? state.prodCalendar : null;
 
   for (const day of days) {
     const date = new Date(year, monthIndex, day);
     const weekday = weekdayNames[(date.getDay() + 6) % 7];
-    const isWeekend = weekday === "Сб" || weekday === "Вс";
+
+    const dayType = prod && prod.dayTypeByDay ? prod.dayTypeByDay[day] : null;
+    const isFallbackWeekend = weekday === "Сб" || weekday === "Вс";
+
+    const isDayOff = dayType === 1 || (dayType == null && isFallbackWeekend);
+    const isPreHoliday = dayType === 2;
 
     const th1 = document.createElement("th");
     th1.textContent = String(day);
-    if (isWeekend) th1.classList.add("day-off");
+    if (isDayOff) th1.classList.add("day-off");
+    if (isPreHoliday) th1.classList.add("pre-holiday");
     headRow1.appendChild(th1);
 
     const th2 = document.createElement("th");
     th2.textContent = weekday;
     th2.className = "weekday-header";
-    if (isWeekend) {
+    if (isDayOff) {
       th2.classList.add("day-off");
       weekendDays.add(day);
     }
+    if (isPreHoliday) th2.classList.add("pre-holiday");
     headRow2.appendChild(th2);
   }
 
