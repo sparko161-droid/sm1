@@ -34,6 +34,27 @@ const LINE_DEPT_IDS = {
 // Руководители/учредители (всегда сверху во "ВСЕ")
 const TOP_MANAGEMENT_IDS = [1167305, 314287]; // Лузин, Сухачев
 
+// Pyrus: значение каталога "Линия/Отдел" (field id=1) в форме явок
+const PYRUS_LINE_ITEM_ID = {
+  L2: 157816613,
+  L1: 165474029,
+  OV: 157816614,
+  OU: 157816622,
+  AI: 168065907,
+  OP: 157816621,
+};
+
+function resolvePyrusLineItemIdByDepartmentId(deptId) {
+  if (deptId == null) return null;
+  if (LINE_DEPT_IDS.L2.includes(deptId)) return PYRUS_LINE_ITEM_ID.L2;
+  if (LINE_DEPT_IDS.L1.includes(deptId)) return PYRUS_LINE_ITEM_ID.L1;
+  if (LINE_DEPT_IDS.OV.includes(deptId)) return PYRUS_LINE_ITEM_ID.OV;
+  if (LINE_DEPT_IDS.OU.includes(deptId)) return PYRUS_LINE_ITEM_ID.OU;
+  if (LINE_DEPT_IDS.AI.includes(deptId)) return PYRUS_LINE_ITEM_ID.AI;
+  if (LINE_DEPT_IDS.OP.includes(deptId)) return PYRUS_LINE_ITEM_ID.OP;
+  return null;
+}
+
 // Порядок групп (department_id) для сортировки внутри вкладок
 const DEPT_ORDER_BY_LINE = {
   L2: LINE_DEPT_IDS.L2.slice(),
@@ -363,6 +384,78 @@ async function pyrusApi(path, method = "GET", body = null) {
   const payload = { path, method };
   if (body) payload.body = body;
   return callGraphApi("pyrus_api", payload);
+}
+
+// -----------------------------
+// Производственный календарь РФ (isdayoff.ru) — помесячно, с кэшем и фолбеком на СБ/ВС
+// -----------------------------
+const PROD_CAL_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 дней
+
+function prodCalCacheKey(year, monthIndex) {
+  const mm = String(monthIndex + 1).padStart(2, "0");
+  return `prodcal_ru_${year}-${mm}_pre1`;
+}
+
+function formatYmdForKey(year, monthIndex, day) {
+  const mm = String(monthIndex + 1).padStart(2, "0");
+  const dd = String(day).padStart(2, "0");
+  return `${year}-${mm}-${dd}`;
+}
+
+function formatYmdCompact(year, monthIndex, day) {
+  const mm = String(monthIndex + 1).padStart(2, "0");
+  const dd = String(day).padStart(2, "0");
+  return `${year}${mm}${dd}`;
+}
+
+async function loadProdCalendarForMonth(year, monthIndex) {
+  const cacheKey = prodCalCacheKey(year, monthIndex);
+  try {
+    const cachedRaw = localStorage.getItem(cacheKey);
+    if (cachedRaw) {
+      const cached = JSON.parse(cachedRaw);
+      if (cached && cached.fetchedAt && (Date.now() - cached.fetchedAt) < PROD_CAL_TTL_MS && cached.dayTypeByDay) {
+        return cached;
+      }
+    }
+  } catch (_) {
+    // ignore cache errors
+  }
+
+  const lastDay = new Date(year, monthIndex + 1, 0).getDate();
+  const date1 = formatYmdCompact(year, monthIndex, 1);
+  const date2 = formatYmdCompact(year, monthIndex, lastDay);
+
+  const url = `https://isdayoff.ru/api/getdata?date1=${date1}&date2=${date2}&cc=ru&pre=1`;
+
+  const resp = await fetch(url, { method: "GET" });
+  const text = (await resp.text()).trim();
+
+  // Возможные ошибки: 100/101/199
+  if (!resp.ok || /^(100|101|199)$/.test(text) || text.length < lastDay) {
+    throw new Error(`ProdCal error: ${resp.status} ${text}`);
+  }
+
+  const dayTypeByDay = Object.create(null);
+  for (let d = 1; d <= lastDay; d++) {
+    const ch = text[d - 1];
+    const code = ch === "0" ? 0 : ch === "1" ? 1 : ch === "2" ? 2 : null;
+    if (code !== null) dayTypeByDay[d] = code;
+  }
+
+  const payload = {
+    monthKey: `${year}-${String(monthIndex + 1).padStart(2, "0")}`,
+    fetchedAt: Date.now(),
+    dayTypeByDay,
+  };
+
+  try {
+    localStorage.setItem(cacheKey, JSON.stringify(payload));
+  } catch (_) {
+    // ignore storage quota / privacy mode
+  }
+
+  return payload;
 }
 
 // -----------------------------
@@ -923,7 +1016,7 @@ function buildPyrusChangesPayload(lineToSave = null) {
     edit: { task: [] },
   };
 
-  const linesToProcess = lineToSave ? [lineToSave] : ["L1", "L2"];
+  const linesToProcess = lineToSave ? [lineToSave] : ["OP", "OV", "L1", "L2", "AI", "OU"];
 
   for (const line of linesToProcess) {
     const baseSched = state.originalScheduleByLine[line];
@@ -939,6 +1032,9 @@ function buildPyrusChangesPayload(lineToSave = null) {
 
     currentSched.rows.forEach((row) => {
       const baseRow = baseRowByEmployee[row.employeeId];
+
+      const employee = state.employeesByLine.ALL.find((e) => e.id === row.employeeId) || null;
+      const departmentItemId = employee ? resolvePyrusLineItemIdByDepartmentId(employee.departmentId) : null;
 
       currentSched.days.forEach((day, idx) => {
         const baseShift = baseRow ? baseRow.shiftsByDay[idx] || null : null;
@@ -966,6 +1062,7 @@ function buildPyrusChangesPayload(lineToSave = null) {
             start: conversion.startUtcIso,
             duration: conversion.durationMinutes,
             amount: Number(currentShift.amount || 0),
+            department_item_id: departmentItemId,
           });
           return;
         }
@@ -998,6 +1095,7 @@ function buildPyrusChangesPayload(lineToSave = null) {
             start: conversion.startUtcIso,
             duration: conversion.durationMinutes,
             amount: Number(currentShift.amount || 0),
+            department_item_id: departmentItemId,
           });
         }
       });
@@ -1560,6 +1658,14 @@ async function reloadScheduleForCurrentMonth() {
     state.vacationsByEmployee = {};
   }
 
+  // Производственный календарь РФ: помесячно (isdayoff.ru), с кэшем и фолбеком на СБ/ВС
+  try {
+    state.prodCalendar = await loadProdCalendarForMonth(year, monthIndex);
+  } catch (e) {
+    console.warn('Не удалось загрузить производственный календарь РФ, используем фолбек СБ/ВС', e);
+    state.prodCalendar = null;
+  }
+
   const wrapper = Array.isArray(data) ? data[0] : data;
   const tasks = (wrapper && wrapper.tasks) || [];
 
@@ -1779,25 +1885,35 @@ function renderScheduleCurrentLine() {
 
   const weekdayNames = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
   const { year, monthIndex } = state.monthMeta;
-  const weekendDays = new Set();
+  const monthKey = `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
+  const weekendDays = new Set(); // фактически "выходные дни" (по производственному календарю или фолбек СБ/ВС)
+
+  const prod = state.prodCalendar && state.prodCalendar.monthKey === monthKey ? state.prodCalendar : null;
 
   for (const day of days) {
     const date = new Date(year, monthIndex, day);
     const weekday = weekdayNames[(date.getDay() + 6) % 7];
-    const isWeekend = weekday === "Сб" || weekday === "Вс";
+
+    const dayType = prod && prod.dayTypeByDay ? prod.dayTypeByDay[day] : null;
+    const isFallbackWeekend = weekday === "Сб" || weekday === "Вс";
+
+    const isDayOff = dayType === 1 || (dayType == null && isFallbackWeekend);
+    const isPreHoliday = dayType === 2;
 
     const th1 = document.createElement("th");
     th1.textContent = String(day);
-    if (isWeekend) th1.classList.add("day-off");
+    if (isDayOff) th1.classList.add("day-off");
+    if (isPreHoliday) th1.classList.add("pre-holiday");
     headRow1.appendChild(th1);
 
     const th2 = document.createElement("th");
     th2.textContent = weekday;
     th2.className = "weekday-header";
-    if (isWeekend) {
+    if (isDayOff) {
       th2.classList.add("day-off");
       weekendDays.add(day);
     }
+    if (isPreHoliday) th2.classList.add("pre-holiday");
     headRow2.appendChild(th2);
   }
 
