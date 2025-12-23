@@ -572,6 +572,8 @@ const btnNextMonthEl = $("#btn-next-month");
 const btnThemeToggleEl = $("#btn-theme-toggle");
 const btnLogoutEl = $("#btn-logout");
 const btnSavePyrusEl = $("#btn-save-pyrus");
+const btnMobileToolbarEl = $("#btn-mobile-toolbar");
+const btnMobileToolbarCloseEl = $("#btn-mobile-toolbar-close");
 
 const scheduleRootEl = $("#schedule-root");
 const quickTemplateSelectEl = $("#quick-template-select");
@@ -789,7 +791,7 @@ function renderLineTabs() {
     btn.className = "btn toggle";
     btn.dataset.line = key;
     btn.textContent = LINE_LABELS[key] || key;
-    btn.addEventListener("click", () => setCurrentLine(key));
+    btn.addEventListener("click", () => { document.body.classList.remove("mobile-toolbar-open"); setCurrentLine(key); });
     lineTabsEl.appendChild(btn);
   }
   updateLineToggleUI();
@@ -797,6 +799,14 @@ function renderLineTabs() {
 
 function bindTopBarButtons() {
   renderLineTabs();
+
+  // Mobile bottom-sheet controls
+  btnMobileToolbarEl?.addEventListener("click", () => {
+    document.body.classList.toggle("mobile-toolbar-open");
+  });
+  btnMobileToolbarCloseEl?.addEventListener("click", () => {
+    document.body.classList.remove("mobile-toolbar-open");
+  });
 
   btnLogoutEl?.addEventListener("click", () => {
     clearAuthCache();

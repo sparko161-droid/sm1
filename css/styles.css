@@ -1139,3 +1139,53 @@ body {
 /* Tabs for lines */
 .line-tabs{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
 .line-tabs .btn{min-width:44px;}
+
+
+/* Mobile layout improvements */
+.mobile-only{display:none;}
+@media (max-width: 768px){
+  .mobile-only{display:inline-flex;}
+  .top-bar{flex-direction:column;align-items:stretch;gap:10px;}
+  .top-bar-right{flex-wrap:wrap;justify-content:flex-start;}
+  #line-tabs.line-tabs{
+    width:100%;
+    order: 10;
+    flex-wrap:nowrap;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+    padding:4px 0;
+  }
+  #line-tabs.line-tabs .btn{flex:0 0 auto;}
+  .month-switcher{width:100%;justify-content:space-between;}
+  .schedule-container{position:relative;}
+  /* Bottom sheet toolbar on mobile */
+  .schedule-toolbar{
+    position:fixed;
+    left:0; right:0;
+    bottom:0;
+    z-index:60;
+    border-top:1px solid var(--border-strong);
+    background: var(--panel);
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+    transform: translateY(calc(100% - 44px));
+    transition: transform .18s ease;
+    max-height: 70vh;
+    overflow:auto;
+    box-shadow: 0 -10px 24px rgba(0,0,0,.25);
+  }
+  body.mobile-toolbar-open .schedule-toolbar{
+    transform: translateY(0);
+  }
+  /* Make the open button sticky and easy to reach */
+  #btn-mobile-toolbar{
+    position:sticky;
+    top: 0;
+    z-index: 20;
+    margin: 10px 0;
+    width: fit-content;
+  }
+  /* Ensure schedule grid not covered by toolbar */
+  .schedule-scroll{
+    padding-bottom: 90px;
+  }
+}
