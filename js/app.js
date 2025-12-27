@@ -391,6 +391,11 @@ function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
   localStorage.setItem(STORAGE_KEYS.theme, theme);
   updateThemeToggleUI();
+
+  // Обновление цветов при смене темы
+  if (typeof ShiftColors !== 'undefined' && ShiftColors.applyTheme) {
+    ShiftColors.applyTheme(theme);
+  }
 }
 
 function updateThemeToggleUI() {
@@ -481,6 +486,11 @@ function bindTopBarButtons() {
   });
 
   updateLineToggleUI();
+
+  // Отображение легенды цветов при переключении линии
+  if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
+    ShiftColors.renderColorLegend(state.ui.currentLine);
+  }
 }
 
 function updateLineToggleUI() {
@@ -1069,6 +1079,11 @@ async function loadInitialData() {
     await reloadScheduleForCurrentMonth();
     updateSaveButtonState();
     updateQuickModeForLine();
+
+    // Отображение легенды цветов после загрузки данных
+    if (typeof ShiftColors !== 'undefined' && ShiftColors.renderColorLegend) {
+      ShiftColors.renderColorLegend(state.ui.currentLine);
+    }
   } catch (err) {
     console.error("loadInitialData error:", err);
     alert(`Ошибка загрузки данных: ${err.message || err}`);
@@ -1177,6 +1192,11 @@ async function loadShiftsCatalog() {
 
   state.shiftTemplatesByLine.L1 = templatesByLine.L1;
   state.shiftTemplatesByLine.L2 = templatesByLine.L2;
+
+  // Инициализация цветов смен
+  if (typeof ShiftColors !== 'undefined' && ShiftColors.initialize) {
+    ShiftColors.initialize(items, headers);
+  }
 }
 
 async function reloadScheduleForCurrentMonth() {
@@ -1410,6 +1430,11 @@ function renderScheduleCurrentLine() {
         td.classList.add("has-shift");
         const pill = document.createElement("div");
         pill.className = "shift-pill";
+
+        // Применение цвета к pill
+        if (typeof ShiftColors !== 'undefined' && ShiftColors.applyColorToPill && shift.templateId) {
+          ShiftColors.applyColorToPill(pill, shift.templateId);
+        }
 
         if (shift.specialShortLabel) {
           pill.classList.add("special");

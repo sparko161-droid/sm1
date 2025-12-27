@@ -92,8 +92,17 @@
             </button>
           </div>
         </div>
+        
         <div class="schedule-scroll">
           <div id="schedule-root"></div>
+        </div>
+
+        <!-- Легенда цветов смен (динамически генерируется) -->
+        <div class="shift-legend" id="shift-legend">
+          <div class="shift-legend-title">Легенда цветов смен</div>
+          <div class="shift-legend-groups" id="shift-legend-content">
+            <!-- Будет заполнено динамически из JavaScript -->
+          </div>
         </div>
 
         <div style="padding: 8px 12px; font-size: 12px; color: var(--text-muted);">
@@ -121,6 +130,7 @@
     </div>
   </div>
 
+  <script src="js/shift-colors.js"></script>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

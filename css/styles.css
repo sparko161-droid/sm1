@@ -1,76 +1,117 @@
 :root {
-  --bg: #05060a;
-  --bg-card: #111827;
-  --bg-alt: #0b1120;
-  --bg-strong: #020617;
-  --page-bg: radial-gradient(circle at top, #111827 0, #020617 50%, #000 100%);
-  --card-bg: radial-gradient(circle at top left, #1f2937, #020617);
-  --border: #1f2937;
-  --border-strong: rgba(148, 163, 184, 0.45);
-  --table-border: rgba(148, 163, 184, 0.35);
-  --table-border-strong: rgba(148, 163, 184, 0.6);
-  --table-header-bg: #0b1220;
-  --sticky-bg: #0a0f1a;
-  --summary-bg: #0b1220;
-  --toolbar-bg: rgba(2, 6, 23, 0.6);
-  --accent: #10b981;
-  --accent-soft: rgba(16, 185, 129, 0.15);
-  --accent-strong: rgba(16, 185, 129, 0.4);
-  --text: #e5e7eb;
-  --text-muted: #9ca3af;
-  --danger: #ef4444;
-  --button-bg: rgba(31, 41, 55, 0.9);
-  --button-bg-hover: rgba(55, 65, 81, 0.95);
-  --pill-bg: rgba(37, 99, 235, 0.18);
-  --pill-border: rgba(129, 140, 248, 0.8);
-  --pill-text: #e5e7eb;
-  --pill-l1-bg: rgba(59, 130, 246, 0.18);
-  --pill-l1-border: rgba(129, 140, 248, 0.9);
-  --pill-l2-bg: rgba(234, 179, 8, 0.16);
-  --pill-l2-border: rgba(250, 204, 21, 0.85);
-  --weekend-bg: rgba(220, 38, 38, 0.18);
-  --weekend-strong: rgba(127, 29, 29, 0.55);
-  --shadow-strong: 0 24px 60px rgba(0, 0, 0, 0.65);
-  --shadow-soft: 0 18px 45px rgba(0, 0, 0, 0.8);
+  /* Corporate colors - светлая тема (по умолчанию) */
+  --red: #c80000;
+  --bg: #f7f7f8;
+  --bg-card: #ffffff;
+  --bg-alt: #f1f1f2;
+  --bg-strong: #e8e8e9;
+  --page-bg: #f7f7f8;
+  --card-bg: #ffffff;
+  --border: #e0e0e0;
+  --border-strong: #d0d0d0;
+  --table-border: #e0e0e0;
+  --table-border-strong: #c0c0c0;
+  --table-header-bg: #f1f1f2;
+  --sticky-bg: #ffffff;
+  --summary-bg: #f9f9f9;
+  --toolbar-bg: rgba(247, 247, 248, 0.95);
+  --accent: #c80000;
+  --accent-soft: rgba(200, 0, 0, 0.08);
+  --accent-strong: rgba(200, 0, 0, 0.25);
+  --text-main: #222222;
+  --text: #222222;
+  --text-muted: #777777;
+  --danger: #c80000;
+  --button-bg: rgba(225, 225, 226, 0.9);
+  --button-bg-hover: rgba(210, 210, 211, 1);
+  --pill-bg: rgba(200, 0, 0, 0.08);
+  --pill-border: rgba(200, 0, 0, 0.35);
+  --pill-text: #222222;
+  
+  /* Цвета для L1 смен - светлая тема */
+  --shift-l1-morning-bg: rgba(220, 38, 38, 0.12);    /* Красный - утро */
+  --shift-l1-morning-border: rgba(220, 38, 38, 0.45);
+  --shift-l1-day-bg: rgba(234, 88, 12, 0.12);        /* Оранжевый - день */
+  --shift-l1-day-border: rgba(234, 88, 12, 0.45);
+  --shift-l1-night-bg: rgba(139, 92, 246, 0.12);     /* Фиолетовый - ночь */
+  --shift-l1-night-border: rgba(139, 92, 246, 0.45);
+  
+  /* Цвета для L2 смен - светлая тема */
+  --shift-l2-morning-bg: rgba(37, 99, 235, 0.12);    /* Синий - утро */
+  --shift-l2-morning-border: rgba(37, 99, 235, 0.45);
+  --shift-l2-day-bg: rgba(22, 163, 74, 0.12);        /* Зелёный - день */
+  --shift-l2-day-border: rgba(22, 163, 74, 0.45);
+  --shift-l2-night-bg: rgba(120, 53, 15, 0.12);      /* Коричневый - ночь */
+  --shift-l2-night-border: rgba(120, 53, 15, 0.45);
+  
+  /* Специальные смены (ВЫХ, ОТП, ДР) */
+  --shift-special-bg: rgba(234, 179, 8, 0.12);
+  --shift-special-border: rgba(234, 179, 8, 0.5);
+  
+  --weekend-bg: rgba(200, 0, 0, 0.12);
+  --weekend-strong: rgba(200, 0, 0, 0.25);
+  --shadow-strong: 0 6px 20px rgba(0, 0, 0, 0.06);
+  --shadow-soft: 0 4px 12px rgba(0, 0, 0, 0.04);
   --header-height: 64px;
   --cell-size: 48px;
   --font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-:root[data-theme="light"] {
-  --bg: #f8fafc;
-  --bg-card: #ffffff;
-  --bg-alt: #f1f5f9;
-  --bg-strong: #e2e8f0;
-  --page-bg: linear-gradient(145deg, #f8fafc 0, #e5edf6 45%, #f8fafc 100%);
-  --card-bg: linear-gradient(160deg, #ffffff 0%, #f1f5f9 100%);
-  --border: #d0d7e2;
-  --border-strong: #b7c2d6;
-  --table-border: #cbd5e1;
-  --table-border-strong: #9ca3af;
-  --table-header-bg: #e5edf6;
-  --sticky-bg: #f8fafc;
-  --summary-bg: #edf2f7;
-  --toolbar-bg: rgba(241, 245, 249, 0.8);
-  --accent: #0ea5e9;
-  --accent-soft: rgba(14, 165, 233, 0.12);
-  --accent-strong: rgba(14, 165, 233, 0.35);
-  --text: #0f172a;
-  --text-muted: #475569;
-  --danger: #b91c1c;
-  --button-bg: rgba(226, 232, 240, 0.95);
-  --button-bg-hover: rgba(203, 213, 225, 1);
-  --pill-bg: rgba(59, 130, 246, 0.12);
-  --pill-border: rgba(59, 130, 246, 0.35);
-  --pill-text: #0f172a;
-  --pill-l1-bg: rgba(59, 130, 246, 0.14);
-  --pill-l1-border: rgba(59, 130, 246, 0.4);
-  --pill-l2-bg: rgba(245, 158, 11, 0.16);
-  --pill-l2-border: rgba(217, 119, 6, 0.45);
-  --weekend-bg: rgba(248, 113, 113, 0.16);
-  --weekend-strong: rgba(248, 113, 113, 0.35);
-  --shadow-strong: 0 14px 40px rgba(15, 23, 42, 0.22);
-  --shadow-soft: 0 12px 32px rgba(15, 23, 42, 0.18);
+/* Темная тема - корпоративные цвета */
+:root[data-theme="dark"],
+body.dark-theme {
+  --red: #ff4b4b;
+  --bg: #111111;
+  --bg-card: #181818;
+  --bg-alt: #1a1a1a;
+  --bg-strong: #0f0f0f;
+  --page-bg: #111111;
+  --card-bg: #181818;
+  --border: #333333;
+  --border-strong: #444444;
+  --table-border: #333333;
+  --table-border-strong: #444444;
+  --table-header-bg: #1a1a1a;
+  --sticky-bg: #181818;
+  --summary-bg: #1a1a1a;
+  --toolbar-bg: rgba(17, 17, 17, 0.95);
+  --accent: #ff4b4b;
+  --accent-soft: rgba(255, 75, 75, 0.12);
+  --accent-strong: rgba(255, 75, 75, 0.3);
+  --text-main: #f5f5f5;
+  --text: #f5f5f5;
+  --text-muted: #999999;
+  --danger: #ff4b4b;
+  --button-bg: rgba(40, 40, 40, 0.9);
+  --button-bg-hover: rgba(55, 55, 55, 0.95);
+  --pill-bg: rgba(255, 75, 75, 0.12);
+  --pill-border: rgba(255, 75, 75, 0.4);
+  --pill-text: #f5f5f5;
+  
+  /* Цвета для L1 смен - тёмная тема */
+  --shift-l1-morning-bg: rgba(248, 113, 113, 0.15);
+  --shift-l1-morning-border: rgba(248, 113, 113, 0.5);
+  --shift-l1-day-bg: rgba(251, 146, 60, 0.15);
+  --shift-l1-day-border: rgba(251, 146, 60, 0.5);
+  --shift-l1-night-bg: rgba(167, 139, 250, 0.15);
+  --shift-l1-night-border: rgba(167, 139, 250, 0.5);
+  
+  /* Цвета для L2 смен - тёмная тема */
+  --shift-l2-morning-bg: rgba(96, 165, 250, 0.15);
+  --shift-l2-morning-border: rgba(96, 165, 250, 0.5);
+  --shift-l2-day-bg: rgba(74, 222, 128, 0.15);
+  --shift-l2-day-border: rgba(74, 222, 128, 0.5);
+  --shift-l2-night-bg: rgba(180, 83, 9, 0.15);
+  --shift-l2-night-border: rgba(180, 83, 9, 0.5);
+  
+  /* Специальные смены */
+  --shift-special-bg: rgba(250, 204, 21, 0.15);
+  --shift-special-border: rgba(250, 204, 21, 0.5);
+  
+  --weekend-bg: rgba(255, 75, 75, 0.15);
+  --weekend-strong: rgba(255, 75, 75, 0.28);
+  --shadow-strong: 0 12px 40px rgba(0, 0, 0, 0.5);
+  --shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
 *,
@@ -85,6 +126,8 @@ body {
   font-family: var(--font);
   background: var(--page-bg);
   color: var(--text);
+  transition: background 0.2s ease, color 0.2s ease;
+  -webkit-font-smoothing: antialiased;
 }
 
 #app {
@@ -109,11 +152,13 @@ body {
   background: var(--card-bg);
   border: 1px solid var(--border-strong);
   box-shadow: var(--shadow-strong);
+  transition: background 0.2s ease, border-color 0.2s ease;
 }
 
 .card h1 {
   margin: 0 0 8px;
   font-size: 24px;
+  color: var(--text);
 }
 
 .muted {
@@ -137,10 +182,11 @@ body {
   border-radius: 10px;
   border: 1px solid var(--border);
   padding: 8px 10px;
-  background: rgba(15, 23, 42, 0.75);
+  background: var(--bg);
   color: var(--text);
   outline: none;
   font-size: 14px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .field input:focus {
@@ -160,19 +206,21 @@ body {
 }
 
 .btn.primary {
-  background: linear-gradient(135deg, #22c55e, #14b8a6);
-  box-shadow: 0 10px 30px rgba(16, 185, 129, 0.45);
+  background: var(--accent);
+  color: #ffffff;
+  box-shadow: 0 6px 20px var(--accent-soft);
   font-weight: 500;
 }
 
 .btn.primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 14px 38px rgba(16, 185, 129, 0.55);
+  box-shadow: 0 10px 30px var(--accent-strong);
+  filter: brightness(1.1);
 }
 
 .btn.primary:active {
   transform: translateY(0);
-  box-shadow: 0 8px 20px rgba(16, 185, 129, 0.4);
+  box-shadow: 0 4px 12px var(--accent-soft);
 }
 
 .btn.full-width {
@@ -193,9 +241,9 @@ body {
 }
 
 .btn.danger {
-  background: rgba(239, 68, 68, 0.2);
+  background: rgba(200, 0, 0, 0.15);
   color: var(--danger);
-  border: 1px solid rgba(239, 68, 68, 0.45);
+  border: 1px solid rgba(200, 0, 0, 0.35);
 }
 
 .btn:not(.primary):hover {
@@ -210,6 +258,7 @@ body {
 .btn.toggle.active {
   background: var(--accent-soft);
   border: 1px solid var(--accent);
+  color: var(--accent);
 }
 
 .error {
@@ -233,6 +282,7 @@ body {
   background: var(--card-bg);
   border: 1px solid var(--border-strong);
   box-shadow: var(--shadow-soft);
+  transition: background 0.2s ease, border-color 0.2s ease;
 }
 
 .top-bar {
@@ -246,6 +296,7 @@ body {
 .top-bar h2 {
   margin: 0;
   font-size: 18px;
+  color: var(--text);
 }
 
 .top-bar-right {
@@ -282,6 +333,7 @@ body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  transition: background 0.2s ease, border-color 0.2s ease;
 }
 
 .schedule-toolbar {
@@ -291,6 +343,7 @@ body {
   padding: 10px 12px;
   border-bottom: 1px solid var(--border);
   background: var(--toolbar-bg);
+  backdrop-filter: blur(10px);
 }
 
 .schedule-toolbar .toolbar-group {
@@ -316,6 +369,7 @@ body {
   outline: none;
   font-size: 13px;
   min-width: 140px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .schedule-toolbar select:focus,
@@ -363,6 +417,7 @@ body {
   text-align: center;
   min-width: var(--cell-size);
   max-width: var(--cell-size);
+  transition: background 0.12s ease;
 }
 
 .schedule-table th.sticky-col,
@@ -389,6 +444,7 @@ body {
   top: 0;
   z-index: 2;
   border-color: var(--table-border-strong);
+  color: var(--text);
 }
 
 .schedule-table .weekday-header {
@@ -456,6 +512,8 @@ body {
   gap: 2px;
   font-weight: 700;
   letter-spacing: 0.4px;
+  background: var(--shift-special-bg);
+  border-color: var(--shift-special-border);
 }
 
 .shift-special-label {
@@ -464,18 +522,40 @@ body {
   font-size: 11px;
 }
 
-.shift-pill.l1 {
-  background: var(--pill-l1-bg);
-  border-color: var(--pill-l1-border);
+/* Цвета для L1 смен по времени суток */
+.shift-pill.l1-morning {
+  background: var(--shift-l1-morning-bg);
+  border-color: var(--shift-l1-morning-border);
 }
 
-.shift-pill.l2 {
-  background: var(--pill-l2-bg);
-  border-color: var(--pill-l2-border);
+.shift-pill.l1-day {
+  background: var(--shift-l1-day-bg);
+  border-color: var(--shift-l1-day-border);
+}
+
+.shift-pill.l1-night {
+  background: var(--shift-l1-night-bg);
+  border-color: var(--shift-l1-night-border);
+}
+
+/* Цвета для L2 смен по времени суток */
+.shift-pill.l2-morning {
+  background: var(--shift-l2-morning-bg);
+  border-color: var(--shift-l2-morning-border);
+}
+
+.shift-pill.l2-day {
+  background: var(--shift-l2-day-bg);
+  border-color: var(--shift-l2-day-border);
+}
+
+.shift-pill.l2-night {
+  background: var(--shift-l2-night-bg);
+  border-color: var(--shift-l2-night-border);
 }
 
 .shift-cell .shift-pill:hover {
-  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.4);
+  box-shadow: 0 0 0 2px var(--accent-soft);
   transform: translateY(-1px) scale(1.02);
 }
 
@@ -487,6 +567,101 @@ body {
 
 .schedule-table tr.row-hover td.day-off {
   background-color: var(--weekend-strong);
+}
+
+/* ===== Легенда цветов смен ===== */
+
+.shift-legend {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-alt);
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.shift-legend-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.shift-legend-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.shift-legend-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shift-legend-group-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.shift-legend-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.shift-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text);
+}
+
+.shift-legend-color {
+  width: 24px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid;
+}
+
+.shift-legend-color.l1-morning {
+  background: var(--shift-l1-morning-bg);
+  border-color: var(--shift-l1-morning-border);
+}
+
+.shift-legend-color.l1-day {
+  background: var(--shift-l1-day-bg);
+  border-color: var(--shift-l1-day-border);
+}
+
+.shift-legend-color.l1-night {
+  background: var(--shift-l1-night-bg);
+  border-color: var(--shift-l1-night-border);
+}
+
+.shift-legend-color.l2-morning {
+  background: var(--shift-l2-morning-bg);
+  border-color: var(--shift-l2-morning-border);
+}
+
+.shift-legend-color.l2-day {
+  background: var(--shift-l2-day-bg);
+  border-color: var(--shift-l2-day-border);
+}
+
+.shift-legend-color.l2-night {
+  background: var(--shift-l2-night-bg);
+  border-color: var(--shift-l2-night-border);
+}
+
+.shift-legend-color.special {
+  background: var(--shift-special-bg);
+  border-color: var(--shift-special-border);
 }
 
 /* ===== Скроллбар ===== */
@@ -501,8 +676,12 @@ body {
 }
 
 .schedule-scroll::-webkit-scrollbar-thumb {
-  background: #4b5563;
+  background: var(--border-strong);
   border-radius: 999px;
+}
+
+.schedule-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
 }
 
 /* ===== ПРАВАЯ ПАНЕЛЬ РЕДАКТОРА СМЕНЫ ===== */
@@ -510,7 +689,7 @@ body {
 .shift-editor-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.6);
+  background: rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(4px);
   display: flex;
   justify-content: flex-end;
@@ -529,15 +708,15 @@ body {
 .shift-editor-panel {
   width: 360px;
   max-width: 100%;
-  background: var(--bg);
+  background: var(--bg-card);
   border-left: 1px solid var(--border);
-  box-shadow: -18px 0 45px rgba(0, 0, 0, 0.65);
+  box-shadow: -18px 0 45px rgba(0, 0, 0, 0.3);
   padding: 18px 18px 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
   transform: translateX(100%);
-  transition: transform 0.2s ease;
+  transition: transform 0.2s ease, background 0.2s ease;
 }
 
 .shift-editor-backdrop.open .shift-editor-panel {
@@ -555,6 +734,7 @@ body {
 .shift-editor-title {
   font-size: 15px;
   font-weight: 500;
+  color: var(--text);
 }
 
 .shift-editor-subtitle {
@@ -618,6 +798,7 @@ body {
   color: var(--text);
   outline: none;
   font-size: 13px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .shift-editor-row select:focus,
@@ -668,7 +849,7 @@ body {
   font-size: 13px;
   opacity: 0;
   transform: translateY(-4px) scale(0.98);
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  transition: opacity 0.15s ease, transform 0.15s ease, background 0.2s ease;
 }
 
 .shift-popover.hidden {
@@ -691,6 +872,7 @@ body {
 .shift-popover-title {
   font-size: 14px;
   font-weight: 500;
+  color: var(--text);
 }
 
 .shift-popover-subtitle {
@@ -705,6 +887,11 @@ body {
   cursor: pointer;
   font-size: 14px;
   padding: 2px 4px;
+  transition: color 0.15s ease;
+}
+
+.shift-popover-close:hover {
+  color: var(--accent);
 }
 
 .shift-popover-body {
@@ -741,7 +928,7 @@ body {
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
-  transition: background 0.15s ease, transform 0.05s ease;
+  transition: background 0.15s ease, transform 0.05s ease, border-color 0.15s ease;
 }
 
 .shift-template-pill .name {
@@ -755,6 +942,7 @@ body {
 
 .shift-template-pill:hover {
   background: var(--accent-soft);
+  border-color: var(--accent);
   transform: translateY(-1px);
 }
 
@@ -784,6 +972,7 @@ body {
   color: var(--text);
   font-size: 12px;
   outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .field-row input:focus {
@@ -815,6 +1004,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  transition: background 0.2s ease, border-color 0.2s ease;
 }
 
 .change-log-header {
@@ -827,6 +1017,7 @@ body {
 .change-log-title {
   font-weight: 600;
   font-size: 14px;
+  color: var(--text);
 }
 
 .change-log-subtitle {
