@@ -454,6 +454,7 @@ body {
   border-color: var(--table-border-strong);
   color: var(--text);
   height: var(--table-header-row-height);
+  background: var(--table-header-bg);
 }
 
 .schedule-table thead tr:nth-child(2) th {
