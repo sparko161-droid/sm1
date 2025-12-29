@@ -12,6 +12,8 @@
   --table-border: #e0e0e0;
   --table-border-strong: #c0c0c0;
   --table-header-bg: #f1f1f2;
+  --table-header-dayoff-bg: #ead5d5;
+  --table-header-preholiday-bg: #f3e0e0;
   --sticky-bg: #ffffff;
   --summary-bg: #f9f9f9;
   --toolbar-bg: rgba(247, 247, 248, 0.95);
@@ -76,6 +78,8 @@ body.dark-theme {
   --table-border: #333333;
   --table-border-strong: #444444;
   --table-header-bg: #1a1a1a;
+  --table-header-dayoff-bg: #3b2121;
+  --table-header-preholiday-bg: #332525;
   --sticky-bg: #181818;
   --summary-bg: #1a1a1a;
   --toolbar-bg: rgba(17, 17, 17, 0.95);
@@ -455,6 +459,14 @@ body {
   color: var(--text);
   height: var(--table-header-row-height);
   background: var(--table-header-bg);
+}
+
+.schedule-table thead th.day-off {
+  background: var(--table-header-dayoff-bg);
+}
+
+.schedule-table thead th.pre-holiday {
+  background: var(--table-header-preholiday-bg);
 }
 
 .schedule-table thead tr:nth-child(2) th {
