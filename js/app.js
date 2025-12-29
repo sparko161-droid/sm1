@@ -2292,6 +2292,41 @@ function createShiftPopover() {
   document.body.appendChild(shiftPopoverEl);
 }
 
+function positionShiftPopover(anchorEl) {
+  if (!shiftPopoverEl || !anchorEl) return;
+
+  const rect = anchorEl.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+
+  shiftPopoverEl.style.left = "0px";
+  shiftPopoverEl.style.top = "0px";
+
+  const popoverRect = shiftPopoverEl.getBoundingClientRect();
+  const popoverWidth = popoverRect.width || 420;
+  const popoverHeight = popoverRect.height || 260;
+
+  let left = rect.left + 8;
+  let top = rect.bottom + 8;
+
+  if (left + popoverWidth > viewportWidth - 16) {
+    left = viewportWidth - popoverWidth - 16;
+  }
+
+  const fitsBelow = top + popoverHeight <= viewportHeight - 16;
+  const fitsAbove = rect.top - popoverHeight - 8 >= 16;
+
+  if (!fitsBelow && fitsAbove) {
+    top = rect.top - popoverHeight - 8;
+  }
+
+  left = Math.max(16, Math.min(left, viewportWidth - popoverWidth - 16));
+  top = Math.max(16, Math.min(top, viewportHeight - popoverHeight - 16));
+
+  shiftPopoverEl.style.left = `${left}px`;
+  shiftPopoverEl.style.top = `${top}px`;
+}
+
 function closeShiftPopover() {
   if (!shiftPopoverEl) return;
 
@@ -2342,29 +2377,7 @@ function openBirthdayPopover(context, anchorEl) {
 
   shiftPopoverBackdropEl.classList.remove("hidden");
   shiftPopoverEl.classList.remove("hidden");
-
-  const rect = anchorEl.getBoundingClientRect();
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-
-  const estimatedWidth = 420;
-  const estimatedHeight = 220;
-
-  let left = rect.left + 8;
-  let top = rect.bottom + 8;
-
-  if (left + estimatedWidth > viewportWidth - 16) {
-    left = viewportWidth - estimatedWidth - 16;
-  }
-  if (top + estimatedHeight > viewportHeight - 16) {
-    top = rect.top - estimatedHeight - 8;
-  }
-
-  left = Math.max(left, 16);
-  top = Math.max(top, 16);
-
-  shiftPopoverEl.style.left = `${left}px`;
-  shiftPopoverEl.style.top = `${top}px`;
+  positionShiftPopover(anchorEl);
 
   const closeBtn = shiftPopoverEl.querySelector(".shift-popover-close");
   const closeBtn2 = shiftPopoverEl.querySelector("#shift-btn-close-birthday");
@@ -2412,29 +2425,7 @@ function openVacationPopover(context, anchorEl) {
 
   shiftPopoverBackdropEl.classList.remove("hidden");
   shiftPopoverEl.classList.remove("hidden");
-
-  const rect = anchorEl.getBoundingClientRect();
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-
-  const estimatedWidth = 420;
-  const estimatedHeight = 240;
-
-  let left = rect.left + 8;
-  let top = rect.bottom + 8;
-
-  if (left + estimatedWidth > viewportWidth - 16) {
-    left = viewportWidth - estimatedWidth - 16;
-  }
-  if (top + estimatedHeight > viewportHeight - 16) {
-    top = rect.top - estimatedHeight - 8;
-  }
-
-  left = Math.max(left, 16);
-  top = Math.max(top, 16);
-
-  shiftPopoverEl.style.left = `${left}px`;
-  shiftPopoverEl.style.top = `${top}px`;
+  positionShiftPopover(anchorEl);
 
   const closeBtn = shiftPopoverEl.querySelector(".shift-popover-close");
   const closeBtn2 = shiftPopoverEl.querySelector("#shift-btn-close-vacation");
@@ -2503,29 +2494,7 @@ function openShiftPopoverReadOnly(context, anchorEl) {
 
   shiftPopoverBackdropEl.classList.remove("hidden");
   shiftPopoverEl.classList.remove("hidden");
-
-  const rect = anchorEl.getBoundingClientRect();
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-
-  const estimatedWidth = 420;
-  const estimatedHeight = 260;
-
-  let left = rect.left + 8;
-  let top = rect.bottom + 8;
-
-  if (left + estimatedWidth > viewportWidth - 16) {
-    left = viewportWidth - estimatedWidth - 16;
-  }
-  if (top + estimatedHeight > viewportHeight - 16) {
-    top = rect.top - estimatedHeight - 8;
-  }
-
-  left = Math.max(left, 16);
-  top = Math.max(top, 16);
-
-  shiftPopoverEl.style.left = `${left}px`;
-  shiftPopoverEl.style.top = `${top}px`;
+  positionShiftPopover(anchorEl);
 
   requestAnimationFrame(() => {
     shiftPopoverEl.classList.add("open");
@@ -2628,29 +2597,7 @@ function openShiftPopover(context, anchorEl) {
 
   shiftPopoverBackdropEl.classList.remove("hidden");
   shiftPopoverEl.classList.remove("hidden");
-
-  const rect = anchorEl.getBoundingClientRect();
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-
-  const estimatedWidth = 420;
-  const estimatedHeight = 260;
-
-  let left = rect.left + 8;
-  let top = rect.bottom + 8;
-
-  if (left + estimatedWidth > viewportWidth - 16) {
-    left = viewportWidth - estimatedWidth - 16;
-  }
-  if (top + estimatedHeight > viewportHeight - 16) {
-    top = rect.top - estimatedHeight - 8;
-  }
-
-  left = Math.max(left, 16);
-  top = Math.max(top, 16);
-
-  shiftPopoverEl.style.left = `${left}px`;
-  shiftPopoverEl.style.top = `${top}px`;
+  positionShiftPopover(anchorEl);
 
   requestAnimationFrame(() => {
     shiftPopoverEl.classList.add("open");
