@@ -2292,6 +2292,31 @@ function createShiftPopover() {
   document.body.appendChild(shiftPopoverEl);
 }
 
+function resolveTemplateName(line, templateId) {
+  if (!line || templateId == null) return null;
+  const templates = state.shiftTemplatesByLine[line] || [];
+  const template = templates.find((tmpl) => tmpl.id === templateId);
+  return template ? template.name : null;
+}
+
+function resolveShiftDisplayName(line, templateId, specialShortLabel) {
+  const templateName = resolveTemplateName(line, templateId);
+  if (templateName) return templateName;
+  if (specialShortLabel) return specialShortLabel;
+  if (templateId != null) return `Шаблон #${templateId}`;
+  return "Ручная смена";
+}
+
+function updateShiftPopoverName(line, templateId, specialShortLabel, showManual = false) {
+  const nameEl = shiftPopoverEl?.querySelector("#shift-popover-shift-name");
+  if (!nameEl) return;
+  if (templateId == null && !specialShortLabel && !showManual) {
+    nameEl.textContent = "";
+    return;
+  }
+  nameEl.textContent = resolveShiftDisplayName(line, templateId, specialShortLabel);
+}
+
 function positionShiftPopover(anchorEl) {
   if (!shiftPopoverEl || !anchorEl) return;
 
@@ -2456,6 +2481,7 @@ function openShiftPopoverReadOnly(context, anchorEl) {
       <div>
         <div class="shift-popover-title">${employeeName}</div>
         <div class="shift-popover-subtitle">${dateLabel} • Линия ${line} (только просмотр)</div>
+        <div class="shift-popover-shift-name" id="shift-popover-shift-name"></div>
       </div>
       <button class="shift-popover-close" type="button">✕</button>
     </div>
@@ -2494,6 +2520,12 @@ function openShiftPopoverReadOnly(context, anchorEl) {
 
   shiftPopoverBackdropEl.classList.remove("hidden");
   shiftPopoverEl.classList.remove("hidden");
+  updateShiftPopoverName(
+    line,
+    shift?.templateId ?? null,
+    shift?.specialShortLabel,
+    Boolean(shift)
+  );
   positionShiftPopover(anchorEl);
 
   requestAnimationFrame(() => {
@@ -2531,6 +2563,7 @@ function openShiftPopover(context, anchorEl) {
       <div>
         <div class="shift-popover-title">${employeeName}</div>
         <div class="shift-popover-subtitle">${dateLabel} • Линия ${line}</div>
+        <div class="shift-popover-shift-name" id="shift-popover-shift-name"></div>
       </div>
       <button class="shift-popover-close" type="button">✕</button>
     </div>
@@ -2597,6 +2630,12 @@ function openShiftPopover(context, anchorEl) {
 
   shiftPopoverBackdropEl.classList.remove("hidden");
   shiftPopoverEl.classList.remove("hidden");
+  updateShiftPopoverName(
+    line,
+    selectedTemplateId ?? shift?.templateId,
+    shift?.specialShortLabel,
+    hasShift
+  );
   positionShiftPopover(anchorEl);
 
   requestAnimationFrame(() => {
@@ -2641,6 +2680,7 @@ function openShiftPopover(context, anchorEl) {
         if (!tmpl) return;
 
         selectedTemplateId = id;
+        updateShiftPopoverName(line, id, tmpl.specialShortLabel);
 
         if (tmpl.timeRange) {
           const startInput = document.getElementById("shift-start-input");

@@ -969,6 +969,13 @@ body {
   color: var(--text-muted);
 }
 
+.shift-popover-shift-name {
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+}
+
 .shift-popover-close {
   border: none;
   background: transparent;
