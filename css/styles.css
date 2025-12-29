@@ -459,6 +459,10 @@ body {
   color: var(--text);
   height: var(--table-header-row-height);
   background: var(--table-header-bg);
+  background-clip: padding-box;
+  box-shadow:
+    inset 0 -1px 0 var(--table-border-strong),
+    inset 0 1px 0 var(--table-border-strong);
 }
 
 .schedule-table thead th.day-off {
