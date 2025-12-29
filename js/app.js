@@ -2292,6 +2292,66 @@ function createShiftPopover() {
   document.body.appendChild(shiftPopoverEl);
 }
 
+function resolveTemplateName(line, templateId) {
+  if (!line || templateId == null) return null;
+  const templates = state.shiftTemplatesByLine[line] || [];
+  const template = templates.find((tmpl) => tmpl.id === templateId);
+  return template ? template.name : null;
+}
+
+function resolveShiftDisplayName(line, templateId, specialShortLabel) {
+  const templateName = resolveTemplateName(line, templateId);
+  if (templateName) return templateName;
+  if (specialShortLabel) return specialShortLabel;
+  if (templateId != null) return `Шаблон #${templateId}`;
+  return "Ручная смена";
+}
+
+function updateShiftPopoverName(line, templateId, specialShortLabel, showManual = false) {
+  const nameEl = shiftPopoverEl?.querySelector("#shift-popover-shift-name");
+  if (!nameEl) return;
+  if (templateId == null && !specialShortLabel && !showManual) {
+    nameEl.textContent = "";
+    return;
+  }
+  nameEl.textContent = resolveShiftDisplayName(line, templateId, specialShortLabel);
+}
+
+function positionShiftPopover(anchorEl) {
+  if (!shiftPopoverEl || !anchorEl) return;
+
+  const rect = anchorEl.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+
+  shiftPopoverEl.style.left = "0px";
+  shiftPopoverEl.style.top = "0px";
+
+  const popoverRect = shiftPopoverEl.getBoundingClientRect();
+  const popoverWidth = popoverRect.width || 420;
+  const popoverHeight = popoverRect.height || 260;
+
+  let left = rect.left + 8;
+  let top = rect.bottom + 8;
+
+  if (left + popoverWidth > viewportWidth - 16) {
+    left = viewportWidth - popoverWidth - 16;
+  }
+
+  const fitsBelow = top + popoverHeight <= viewportHeight - 16;
+  const fitsAbove = rect.top - popoverHeight - 8 >= 16;
+
+  if (!fitsBelow && fitsAbove) {
+    top = rect.top - popoverHeight - 8;
+  }
+
+  left = Math.max(16, Math.min(left, viewportWidth - popoverWidth - 16));
+  top = Math.max(16, Math.min(top, viewportHeight - popoverHeight - 16));
+
+  shiftPopoverEl.style.left = `${left}px`;
+  shiftPopoverEl.style.top = `${top}px`;
+}
+
 function closeShiftPopover() {
   if (!shiftPopoverEl) return;
 
@@ -2342,29 +2402,7 @@ function openBirthdayPopover(context, anchorEl) {
 
   shiftPopoverBackdropEl.classList.remove("hidden");
   shiftPopoverEl.classList.remove("hidden");
-
-  const rect = anchorEl.getBoundingClientRect();
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-
-  const estimatedWidth = 420;
-  const estimatedHeight = 220;
-
-  let left = rect.left + 8;
-  let top = rect.bottom + 8;
-
-  if (left + estimatedWidth > viewportWidth - 16) {
-    left = viewportWidth - estimatedWidth - 16;
-  }
-  if (top + estimatedHeight > viewportHeight - 16) {
-    top = rect.top - estimatedHeight - 8;
-  }
-
-  left = Math.max(left, 16);
-  top = Math.max(top, 16);
-
-  shiftPopoverEl.style.left = `${left}px`;
-  shiftPopoverEl.style.top = `${top}px`;
+  positionShiftPopover(anchorEl);
 
   const closeBtn = shiftPopoverEl.querySelector(".shift-popover-close");
   const closeBtn2 = shiftPopoverEl.querySelector("#shift-btn-close-birthday");
@@ -2412,29 +2450,7 @@ function openVacationPopover(context, anchorEl) {
 
   shiftPopoverBackdropEl.classList.remove("hidden");
   shiftPopoverEl.classList.remove("hidden");
-
-  const rect = anchorEl.getBoundingClientRect();
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-
-  const estimatedWidth = 420;
-  const estimatedHeight = 240;
-
-  let left = rect.left + 8;
-  let top = rect.bottom + 8;
-
-  if (left + estimatedWidth > viewportWidth - 16) {
-    left = viewportWidth - estimatedWidth - 16;
-  }
-  if (top + estimatedHeight > viewportHeight - 16) {
-    top = rect.top - estimatedHeight - 8;
-  }
-
-  left = Math.max(left, 16);
-  top = Math.max(top, 16);
-
-  shiftPopoverEl.style.left = `${left}px`;
-  shiftPopoverEl.style.top = `${top}px`;
+  positionShiftPopover(anchorEl);
 
   const closeBtn = shiftPopoverEl.querySelector(".shift-popover-close");
   const closeBtn2 = shiftPopoverEl.querySelector("#shift-btn-close-vacation");
@@ -2465,6 +2481,7 @@ function openShiftPopoverReadOnly(context, anchorEl) {
       <div>
         <div class="shift-popover-title">${employeeName}</div>
         <div class="shift-popover-subtitle">${dateLabel} • Линия ${line} (только просмотр)</div>
+        <div class="shift-popover-shift-name" id="shift-popover-shift-name"></div>
       </div>
       <button class="shift-popover-close" type="button">✕</button>
     </div>
@@ -2503,29 +2520,13 @@ function openShiftPopoverReadOnly(context, anchorEl) {
 
   shiftPopoverBackdropEl.classList.remove("hidden");
   shiftPopoverEl.classList.remove("hidden");
-
-  const rect = anchorEl.getBoundingClientRect();
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-
-  const estimatedWidth = 420;
-  const estimatedHeight = 260;
-
-  let left = rect.left + 8;
-  let top = rect.bottom + 8;
-
-  if (left + estimatedWidth > viewportWidth - 16) {
-    left = viewportWidth - estimatedWidth - 16;
-  }
-  if (top + estimatedHeight > viewportHeight - 16) {
-    top = rect.top - estimatedHeight - 8;
-  }
-
-  left = Math.max(left, 16);
-  top = Math.max(top, 16);
-
-  shiftPopoverEl.style.left = `${left}px`;
-  shiftPopoverEl.style.top = `${top}px`;
+  updateShiftPopoverName(
+    line,
+    shift?.templateId ?? null,
+    shift?.specialShortLabel,
+    Boolean(shift)
+  );
+  positionShiftPopover(anchorEl);
 
   requestAnimationFrame(() => {
     shiftPopoverEl.classList.add("open");
@@ -2562,6 +2563,7 @@ function openShiftPopover(context, anchorEl) {
       <div>
         <div class="shift-popover-title">${employeeName}</div>
         <div class="shift-popover-subtitle">${dateLabel} • Линия ${line}</div>
+        <div class="shift-popover-shift-name" id="shift-popover-shift-name"></div>
       </div>
       <button class="shift-popover-close" type="button">✕</button>
     </div>
@@ -2628,29 +2630,13 @@ function openShiftPopover(context, anchorEl) {
 
   shiftPopoverBackdropEl.classList.remove("hidden");
   shiftPopoverEl.classList.remove("hidden");
-
-  const rect = anchorEl.getBoundingClientRect();
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-
-  const estimatedWidth = 420;
-  const estimatedHeight = 260;
-
-  let left = rect.left + 8;
-  let top = rect.bottom + 8;
-
-  if (left + estimatedWidth > viewportWidth - 16) {
-    left = viewportWidth - estimatedWidth - 16;
-  }
-  if (top + estimatedHeight > viewportHeight - 16) {
-    top = rect.top - estimatedHeight - 8;
-  }
-
-  left = Math.max(left, 16);
-  top = Math.max(top, 16);
-
-  shiftPopoverEl.style.left = `${left}px`;
-  shiftPopoverEl.style.top = `${top}px`;
+  updateShiftPopoverName(
+    line,
+    selectedTemplateId ?? shift?.templateId,
+    shift?.specialShortLabel,
+    hasShift
+  );
+  positionShiftPopover(anchorEl);
 
   requestAnimationFrame(() => {
     shiftPopoverEl.classList.add("open");
@@ -2694,6 +2680,7 @@ function openShiftPopover(context, anchorEl) {
         if (!tmpl) return;
 
         selectedTemplateId = id;
+        updateShiftPopoverName(line, id, tmpl.specialShortLabel);
 
         if (tmpl.timeRange) {
           const startInput = document.getElementById("shift-start-input");

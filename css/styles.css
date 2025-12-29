@@ -12,6 +12,8 @@
   --table-border: #e0e0e0;
   --table-border-strong: #c0c0c0;
   --table-header-bg: #f1f1f2;
+  --table-header-dayoff-bg: #ead5d5;
+  --table-header-preholiday-bg: #f3e0e0;
   --sticky-bg: #ffffff;
   --summary-bg: #f9f9f9;
   --toolbar-bg: rgba(247, 247, 248, 0.95);
@@ -57,6 +59,7 @@
   --shadow-soft: 0 4px 12px rgba(0, 0, 0, 0.04);
   --header-height: 64px;
   --cell-size: 48px;
+  --table-header-row-height: 24px;
   --font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
@@ -75,6 +78,8 @@ body.dark-theme {
   --table-border: #333333;
   --table-border-strong: #444444;
   --table-header-bg: #1a1a1a;
+  --table-header-dayoff-bg: #3b2121;
+  --table-header-preholiday-bg: #332525;
   --sticky-bg: #181818;
   --summary-bg: #1a1a1a;
   --toolbar-bg: rgba(17, 17, 17, 0.95);
@@ -452,6 +457,24 @@ body {
   z-index: 2;
   border-color: var(--table-border-strong);
   color: var(--text);
+  height: var(--table-header-row-height);
+  background: var(--table-header-bg);
+  background-clip: padding-box;
+  box-shadow:
+    inset 0 -1px 0 var(--table-border-strong),
+    inset 0 1px 0 var(--table-border-strong);
+}
+
+.schedule-table thead th.day-off {
+  background: var(--table-header-dayoff-bg);
+}
+
+.schedule-table thead th.pre-holiday {
+  background: var(--table-header-preholiday-bg);
+}
+
+.schedule-table thead tr:nth-child(2) th {
+  top: var(--table-header-row-height);
 }
 
 .schedule-table .weekday-header {
@@ -967,6 +990,13 @@ body {
 .shift-popover-subtitle {
   font-size: 12px;
   color: var(--text-muted);
+}
+
+.shift-popover-shift-name {
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
 }
 
 .shift-popover-close {
