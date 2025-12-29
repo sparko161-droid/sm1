@@ -152,6 +152,7 @@ const STORAGE_KEYS = {
   localChanges: "sm1_local_changes",
   changeHistory: "sm1_change_history",
   theme: "sm1_theme_preference",
+  currentLine: "sm1_current_line",
 };
 
 function deepClone(obj) {
@@ -596,6 +597,7 @@ let shiftPopoverKeydownHandler = null;
 function init() {
   resetLocalEditingState();
   initTheme();
+  loadCurrentLinePreference();
   initMonthMetaToToday();
   bindLoginForm();
 
@@ -719,6 +721,25 @@ function updateThemeToggleUI() {
   );
 }
 
+function loadCurrentLinePreference() {
+  try {
+    const storedLine = localStorage.getItem(STORAGE_KEYS.currentLine);
+    if (storedLine && LINE_KEYS_IN_UI_ORDER.includes(storedLine)) {
+      state.ui.currentLine = storedLine;
+    }
+  } catch (_) {
+    // ignore storage quota / privacy mode
+  }
+}
+
+function persistCurrentLinePreference() {
+  try {
+    localStorage.setItem(STORAGE_KEYS.currentLine, state.ui.currentLine);
+  } catch (_) {
+    // ignore storage quota / privacy mode
+  }
+}
+
 // -----------------------------
 // События
 // -----------------------------
@@ -752,6 +773,7 @@ function bindLoginForm() {
         const first = LINE_KEYS_IN_UI_ORDER.find((k) => canViewLine(k));
         if (first) state.ui.currentLine = first;
       }
+      persistCurrentLinePreference();
       loginScreenEl.classList.add("hidden");
       mainScreenEl.classList.remove("hidden");
 
@@ -771,6 +793,7 @@ function bindLoginForm() {
 function setCurrentLine(lineKey) {
   if (!canViewLine(lineKey)) return;
   state.ui.currentLine = lineKey;
+  persistCurrentLinePreference();
   updateLineToggleUI();
   updateSaveButtonState();
   updateQuickModeForLine();
