@@ -512,6 +512,115 @@ body {
   font-weight: 500;
 }
 
+.schedule-table .employee-header-cell {
+  min-width: 200px;
+}
+
+.employee-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.employee-filter-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.employee-filter-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.employee-filter-btn:hover {
+  background: var(--button-bg-hover);
+}
+
+.employee-filter-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.employee-filter-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 240px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  box-shadow: var(--shadow-strong);
+  z-index: 10;
+  display: none;
+}
+
+.employee-filter-popover.open {
+  display: block;
+}
+
+.employee-filter-header {
+  font-weight: 600;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.employee-filter-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.employee-filter-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 240px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.employee-filter-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.employee-filter-item input {
+  accent-color: var(--accent);
+}
+
+.employee-filter-master {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+.employee-row-hidden {
+  display: none;
+}
+
+.employee-filter-empty td {
+  padding: 12px;
+  text-align: left;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 /* ===== Пилюля смены (две строки: начало / конец) ===== */
 
 .shift-pill {

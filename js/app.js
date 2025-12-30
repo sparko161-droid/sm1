@@ -141,6 +141,15 @@ const state = {
     monthIndex: null,
   },
   vacationsByEmployee: {},
+  employeeFiltersByLine: {
+    ALL: [],
+    OP: [],
+    OV: [],
+    L1: [],
+    L2: [],
+    AI: [],
+    OU: [],
+  },
 };
 
 const scheduleCacheByLine = {
@@ -153,6 +162,7 @@ const STORAGE_KEYS = {
   changeHistory: "sm1_change_history",
   theme: "sm1_theme_preference",
   currentLine: "sm1_current_line",
+  employeeFilters: "sm1_employee_filters",
 };
 
 function deepClone(obj) {
@@ -589,6 +599,8 @@ const btnClearHistoryEl = $("#btn-clear-history");
 let shiftPopoverEl = null;
 let shiftPopoverBackdropEl = null;
 let shiftPopoverKeydownHandler = null;
+let employeeFilterPopoverEl = null;
+let employeeFilterPopoverHandler = null;
 
 // -----------------------------
 // Инициализация
@@ -598,6 +610,7 @@ function init() {
   resetLocalEditingState();
   initTheme();
   loadCurrentLinePreference();
+  loadEmployeeFilters();
   initMonthMetaToToday();
   bindLoginForm();
 
@@ -738,6 +751,79 @@ function persistCurrentLinePreference() {
   } catch (_) {
     // ignore storage quota / privacy mode
   }
+}
+
+function loadEmployeeFilters() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.employeeFilters);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return;
+
+    for (const key of Object.keys(state.employeeFiltersByLine)) {
+      const list = parsed[key];
+      if (Array.isArray(list)) {
+        state.employeeFiltersByLine[key] = list
+          .map((id) => Number(id))
+          .filter((id) => Number.isFinite(id));
+      }
+    }
+  } catch (err) {
+    console.warn("Не удалось загрузить фильтры сотрудников", err);
+  }
+}
+
+function persistEmployeeFilters() {
+  try {
+    localStorage.setItem(
+      STORAGE_KEYS.employeeFilters,
+      JSON.stringify(state.employeeFiltersByLine)
+    );
+  } catch (err) {
+    console.warn("Не удалось сохранить фильтры сотрудников", err);
+  }
+}
+
+function normalizeHiddenEmployeeIds(line, rows) {
+  const validIds = new Set(rows.map((row) => row.employeeId));
+  const current = state.employeeFiltersByLine[line] || [];
+  const next = current.filter((id) => validIds.has(id));
+  if (next.length !== current.length) {
+    state.employeeFiltersByLine[line] = next;
+    persistEmployeeFilters();
+  }
+  return new Set(next);
+}
+
+function setHiddenEmployeeIds(line, ids) {
+  state.employeeFiltersByLine[line] = Array.from(ids);
+  persistEmployeeFilters();
+}
+
+function closeEmployeeFilterPopover() {
+  if (!employeeFilterPopoverEl) return;
+  employeeFilterPopoverEl.classList.remove("open");
+  employeeFilterPopoverEl = null;
+  if (employeeFilterPopoverHandler) {
+    document.removeEventListener("click", employeeFilterPopoverHandler);
+    employeeFilterPopoverHandler = null;
+  }
+}
+
+function openEmployeeFilterPopover(popoverEl, buttonEl) {
+  if (employeeFilterPopoverEl === popoverEl) {
+    closeEmployeeFilterPopover();
+    return;
+  }
+  closeEmployeeFilterPopover();
+  popoverEl.classList.add("open");
+  employeeFilterPopoverEl = popoverEl;
+  employeeFilterPopoverHandler = (event) => {
+    if (!popoverEl.contains(event.target) && event.target !== buttonEl) {
+      closeEmployeeFilterPopover();
+    }
+  };
+  setTimeout(() => document.addEventListener("click", employeeFilterPopoverHandler), 0);
 }
 
 // -----------------------------
@@ -2013,7 +2099,26 @@ async function reloadScheduleForCurrentMonth() {
 // Рендер таблицы
 // -----------------------------
 
+function applyEmployeeFilterToTable(table, hiddenIds, emptyRowEl) {
+  const tbody = table.querySelector("tbody");
+  if (!tbody) return;
+  const dataRows = Array.from(tbody.querySelectorAll("tr")).filter(
+    (row) => !row.classList.contains("employee-filter-empty")
+  );
+  let visibleCount = 0;
+  for (const row of dataRows) {
+    const id = Number(row.dataset.employeeId);
+    const shouldHide = hiddenIds.has(id);
+    row.classList.toggle("employee-row-hidden", shouldHide);
+    if (!shouldHide) visibleCount += 1;
+  }
+  if (emptyRowEl) {
+    emptyRowEl.classList.toggle("hidden", visibleCount > 0);
+  }
+}
+
 function renderScheduleCurrentLine() {
+  closeEmployeeFilterPopover();
   const line = state.ui.currentLine;
   const sched = state.scheduleByLine[line];
 
@@ -2025,6 +2130,7 @@ function renderScheduleCurrentLine() {
 
   const canEdit = canEditLine(line);
   const { days, rows } = sched;
+  const hiddenEmployeeIds = normalizeHiddenEmployeeIds(line, rows);
 
   const table = document.createElement("table");
   table.className = "schedule-table";
@@ -2038,8 +2144,124 @@ function renderScheduleCurrentLine() {
   const headRow2 = document.createElement("tr");
 
   const thName = document.createElement("th");
-  thName.className = "sticky-col";
-  thName.textContent = "Сотрудник";
+  thName.className = "sticky-col employee-header-cell";
+
+  const thNameWrap = document.createElement("div");
+  thNameWrap.className = "employee-header";
+
+  const thNameLabel = document.createElement("span");
+  thNameLabel.textContent = "Сотрудник";
+
+  const filterBtn = document.createElement("button");
+  filterBtn.type = "button";
+  filterBtn.className = "employee-filter-btn";
+  filterBtn.setAttribute("aria-label", "Фильтр сотрудников");
+  filterBtn.innerHTML =
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7z"></path></svg>';
+  if (hiddenEmployeeIds.size > 0) filterBtn.classList.add("active");
+
+  const filterPopover = document.createElement("div");
+  filterPopover.className = "employee-filter-popover";
+
+  const popoverHeader = document.createElement("div");
+  popoverHeader.className = "employee-filter-header";
+  popoverHeader.textContent = "Фильтр сотрудников";
+
+  const popoverMeta = document.createElement("div");
+  popoverMeta.className = "employee-filter-meta";
+
+  const popoverList = document.createElement("div");
+  popoverList.className = "employee-filter-list";
+
+  const masterLabel = document.createElement("label");
+  masterLabel.className = "employee-filter-item employee-filter-master";
+  const masterCheckbox = document.createElement("input");
+  masterCheckbox.type = "checkbox";
+  const masterText = document.createElement("span");
+  masterText.textContent = "Все сотрудники";
+  masterLabel.appendChild(masterCheckbox);
+  masterLabel.appendChild(masterText);
+  popoverList.appendChild(masterLabel);
+
+  const itemCheckboxes = [];
+
+  for (const row of rows) {
+    const itemLabel = document.createElement("label");
+    itemLabel.className = "employee-filter-item";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = !hiddenEmployeeIds.has(row.employeeId);
+    checkbox.dataset.employeeId = String(row.employeeId);
+
+    const name = document.createElement("span");
+    name.textContent = row.employeeName;
+
+    itemLabel.appendChild(checkbox);
+    itemLabel.appendChild(name);
+    popoverList.appendChild(itemLabel);
+    itemCheckboxes.push(checkbox);
+  }
+
+  const updateFilterUI = () => {
+    const total = rows.length;
+    const hiddenCount = hiddenEmployeeIds.size;
+    const visibleCount = total - hiddenCount;
+    masterCheckbox.checked = hiddenCount === 0;
+    masterCheckbox.indeterminate = hiddenCount > 0 && hiddenCount < total;
+    popoverMeta.textContent = `Показано: ${visibleCount} из ${total}`;
+    filterBtn.classList.toggle("active", hiddenCount > 0);
+  };
+
+  let emptyRow = null;
+
+  masterCheckbox.addEventListener("change", () => {
+    if (masterCheckbox.checked) {
+      hiddenEmployeeIds.clear();
+    } else {
+      for (const row of rows) {
+        hiddenEmployeeIds.add(row.employeeId);
+      }
+    }
+    for (const checkbox of itemCheckboxes) {
+      const id = Number(checkbox.dataset.employeeId);
+      checkbox.checked = !hiddenEmployeeIds.has(id);
+    }
+    setHiddenEmployeeIds(line, hiddenEmployeeIds);
+    updateFilterUI();
+    if (emptyRow) {
+      applyEmployeeFilterToTable(table, hiddenEmployeeIds, emptyRow);
+    }
+  });
+
+  for (const checkbox of itemCheckboxes) {
+    checkbox.addEventListener("change", () => {
+      const id = Number(checkbox.dataset.employeeId);
+      if (checkbox.checked) {
+        hiddenEmployeeIds.delete(id);
+      } else {
+        hiddenEmployeeIds.add(id);
+      }
+      setHiddenEmployeeIds(line, hiddenEmployeeIds);
+      updateFilterUI();
+      if (emptyRow) {
+        applyEmployeeFilterToTable(table, hiddenEmployeeIds, emptyRow);
+      }
+    });
+  }
+
+  filterBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openEmployeeFilterPopover(filterPopover, filterBtn);
+  });
+
+  thNameWrap.appendChild(thNameLabel);
+  thNameWrap.appendChild(filterBtn);
+  filterPopover.appendChild(popoverHeader);
+  filterPopover.appendChild(popoverMeta);
+  filterPopover.appendChild(popoverList);
+  thNameWrap.appendChild(filterPopover);
+  thName.appendChild(thNameWrap);
   headRow1.appendChild(thName);
 
   const thName2 = document.createElement("th");
@@ -2099,6 +2321,7 @@ function renderScheduleCurrentLine() {
 
   rows.forEach((row) => {
     const tr = document.createElement("tr");
+    tr.dataset.employeeId = String(row.employeeId);
 
     const tdName = document.createElement("td");
     tdName.className = "sticky-col employee-name";
@@ -2291,9 +2514,19 @@ function renderScheduleCurrentLine() {
     tbody.appendChild(tr);
   });
 
+  emptyRow = document.createElement("tr");
+  emptyRow.className = "employee-filter-empty hidden";
+  const emptyCell = document.createElement("td");
+  emptyCell.colSpan = days.length + 2;
+  emptyCell.textContent = "Нет сотрудников для отображения по фильтру.";
+  emptyRow.appendChild(emptyCell);
+  tbody.appendChild(emptyRow);
+
   table.appendChild(tbody);
   scheduleRootEl.innerHTML = "";
   scheduleRootEl.appendChild(table);
+  updateFilterUI();
+  applyEmployeeFilterToTable(table, hiddenEmployeeIds, emptyRow);
 }
 
 // -----------------------------
