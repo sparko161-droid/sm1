@@ -512,6 +512,160 @@ body {
   font-weight: 500;
 }
 
+.schedule-table .employee-header-cell {
+  min-width: 200px;
+}
+
+.employee-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.employee-filter-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.employee-filter-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.employee-filter-btn:hover {
+  background: var(--button-bg-hover);
+}
+
+.employee-filter-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.employee-filter-popover-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 72px 16px 24px;
+  z-index: 120;
+}
+
+.employee-filter-popover {
+  width: min(360px, 92vw);
+  max-height: min(520px, 70vh);
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  box-shadow: var(--shadow-strong);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.employee-filter-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.employee-filter-close {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.employee-filter-close:hover {
+  color: var(--text);
+}
+
+.employee-filter-header {
+  font-weight: 600;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.employee-filter-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.employee-filter-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.employee-filter-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.employee-filter-item input {
+  accent-color: var(--accent);
+}
+
+.employee-filter-master {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+.employee-filter-controls {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.employee-filter-close-action {
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--button-bg);
+  color: var(--text);
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.employee-filter-close-action:hover {
+  background: var(--button-bg-hover);
+}
+
+.employee-row-hidden {
+  display: none;
+}
+
+.employee-filter-empty td {
+  padding: 12px;
+  text-align: left;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 /* ===== Пилюля смены (две строки: начало / конец) ===== */
 
 .shift-pill {
