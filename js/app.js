@@ -95,6 +95,7 @@ const state = {
   ui: {
     currentLine: "ALL",
     theme: "dark",
+    isScheduleCached: false,
   },
   quickMode: {
     enabled: false,
@@ -141,6 +142,15 @@ const state = {
     monthIndex: null,
   },
   vacationsByEmployee: {},
+  employeeFiltersByLine: {
+    ALL: [],
+    OP: [],
+    OV: [],
+    L1: [],
+    L2: [],
+    AI: [],
+    OU: [],
+  },
 };
 
 const scheduleCacheByLine = {
@@ -153,6 +163,10 @@ const STORAGE_KEYS = {
   changeHistory: "sm1_change_history",
   theme: "sm1_theme_preference",
   currentLine: "sm1_current_line",
+  employeeFilters: "sm1_employee_filters",
+  cachedEmployees: "sm1_cached_employees",
+  cachedShiftTemplates: "sm1_cached_shift_templates",
+  cachedSchedulePrefix: "sm1_cached_schedule_",
 };
 
 function deepClone(obj) {
@@ -164,6 +178,7 @@ function deepClone(obj) {
 // -----------------------------
 
 function canEditLine(line) {
+  if (state.ui.isScheduleCached) return false;
   const permission = state.auth.permissions[line] || state.auth.permissions.ALL;
   return permission === "edit";
 }
@@ -589,6 +604,13 @@ const btnClearHistoryEl = $("#btn-clear-history");
 let shiftPopoverEl = null;
 let shiftPopoverBackdropEl = null;
 let shiftPopoverKeydownHandler = null;
+let employeeFilterPopoverEl = null;
+let employeeFilterPopoverBackdropEl = null;
+let employeeFilterPopoverKeydownHandler = null;
+let employeeFilterPopoverTitleEl = null;
+let employeeFilterPopoverMetaEl = null;
+let employeeFilterPopoverListEl = null;
+let employeeFilterPopoverControlsEl = null;
 
 // -----------------------------
 // Инициализация
@@ -598,6 +620,7 @@ function init() {
   resetLocalEditingState();
   initTheme();
   loadCurrentLinePreference();
+  loadEmployeeFilters();
   initMonthMetaToToday();
   bindLoginForm();
 
@@ -611,6 +634,7 @@ function init() {
   bindTopBarButtons();
   bindHistoryControls();
   createShiftPopover();
+  createEmployeeFilterPopover();
   renderChangeLog();
 
   // Если восстановили сессию — загружаем данные как после логина
@@ -738,6 +762,334 @@ function persistCurrentLinePreference() {
   } catch (_) {
     // ignore storage quota / privacy mode
   }
+}
+
+function getMonthKey(year, monthIndex) {
+  return `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
+}
+
+function loadCachedEmployees() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.cachedEmployees);
+    if (!raw) return false;
+    const cached = JSON.parse(raw);
+    if (!cached || typeof cached !== "object") return false;
+
+    const employeesByLine = cached.employeesByLine;
+    if (!employeesByLine || typeof employeesByLine !== "object") return false;
+
+    for (const key of Object.keys(state.employeesByLine)) {
+      const list = employeesByLine[key];
+      state.employeesByLine[key] = Array.isArray(list) ? list : [];
+    }
+    return true;
+  } catch (err) {
+    console.warn("Не удалось загрузить кэш сотрудников", err);
+    return false;
+  }
+}
+
+function persistCachedEmployees() {
+  try {
+    localStorage.setItem(
+      STORAGE_KEYS.cachedEmployees,
+      JSON.stringify({
+        fetchedAt: Date.now(),
+        employeesByLine: state.employeesByLine,
+      })
+    );
+  } catch (err) {
+    console.warn("Не удалось сохранить кэш сотрудников", err);
+  }
+}
+
+function loadCachedShiftTemplates() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.cachedShiftTemplates);
+    if (!raw) return false;
+    const cached = JSON.parse(raw);
+    if (!cached || typeof cached !== "object") return false;
+
+    const templatesByLine = cached.shiftTemplatesByLine;
+    if (!templatesByLine || typeof templatesByLine !== "object") return false;
+
+    for (const key of Object.keys(state.shiftTemplatesByLine)) {
+      const list = templatesByLine[key];
+      state.shiftTemplatesByLine[key] = Array.isArray(list) ? list : [];
+    }
+
+    if (typeof ShiftColors !== "undefined" && ShiftColors.initialize) {
+      ShiftColors.initialize(state.shiftTemplatesByLine, state.ui.theme);
+    }
+    return true;
+  } catch (err) {
+    console.warn("Не удалось загрузить кэш шаблонов смен", err);
+    return false;
+  }
+}
+
+function persistCachedShiftTemplates() {
+  try {
+    localStorage.setItem(
+      STORAGE_KEYS.cachedShiftTemplates,
+      JSON.stringify({
+        fetchedAt: Date.now(),
+        shiftTemplatesByLine: state.shiftTemplatesByLine,
+      })
+    );
+  } catch (err) {
+    console.warn("Не удалось сохранить кэш шаблонов смен", err);
+  }
+}
+
+function loadCachedScheduleForMonth(year, monthIndex) {
+  try {
+    const monthKey = getMonthKey(year, monthIndex);
+    const raw = localStorage.getItem(`${STORAGE_KEYS.cachedSchedulePrefix}${monthKey}`);
+    if (!raw) return false;
+    const cached = JSON.parse(raw);
+    if (!cached || typeof cached !== "object") return false;
+    if (!cached.scheduleByLine || typeof cached.scheduleByLine !== "object") return false;
+
+    state.scheduleByLine = cached.scheduleByLine;
+    state.originalScheduleByLine = deepClone(cached.scheduleByLine);
+    state.vacationsByEmployee = cached.vacationsByEmployee || {};
+    state.ui.isScheduleCached = true;
+
+    applyLocalChangesToSchedule();
+    renderScheduleCurrentLine();
+    return true;
+  } catch (err) {
+    console.warn("Не удалось загрузить кэш графика", err);
+    return false;
+  }
+}
+
+function persistCachedScheduleForMonth(year, monthIndex) {
+  try {
+    const monthKey = getMonthKey(year, monthIndex);
+    localStorage.setItem(
+      `${STORAGE_KEYS.cachedSchedulePrefix}${monthKey}`,
+      JSON.stringify({
+        fetchedAt: Date.now(),
+        scheduleByLine: state.scheduleByLine,
+        vacationsByEmployee: state.vacationsByEmployee,
+      })
+    );
+  } catch (err) {
+    console.warn("Не удалось сохранить кэш графика", err);
+  }
+}
+
+function loadEmployeeFilters() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.employeeFilters);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return;
+
+    for (const key of Object.keys(state.employeeFiltersByLine)) {
+      const list = parsed[key];
+      if (Array.isArray(list)) {
+        state.employeeFiltersByLine[key] = list
+          .map((id) => Number(id))
+          .filter((id) => Number.isFinite(id));
+      }
+    }
+  } catch (err) {
+    console.warn("Не удалось загрузить фильтры сотрудников", err);
+  }
+}
+
+function persistEmployeeFilters() {
+  try {
+    localStorage.setItem(
+      STORAGE_KEYS.employeeFilters,
+      JSON.stringify(state.employeeFiltersByLine)
+    );
+  } catch (err) {
+    console.warn("Не удалось сохранить фильтры сотрудников", err);
+  }
+}
+
+function normalizeHiddenEmployeeIds(line, rows) {
+  const validIds = new Set(rows.map((row) => row.employeeId));
+  const current = state.employeeFiltersByLine[line] || [];
+  const next = current.filter((id) => validIds.has(id));
+  if (next.length !== current.length) {
+    state.employeeFiltersByLine[line] = next;
+    persistEmployeeFilters();
+  }
+  return new Set(next);
+}
+
+function setHiddenEmployeeIds(line, ids) {
+  state.employeeFiltersByLine[line] = Array.from(ids);
+  persistEmployeeFilters();
+}
+
+function createEmployeeFilterPopover() {
+  if (employeeFilterPopoverEl) return;
+
+  employeeFilterPopoverBackdropEl = document.createElement("div");
+  employeeFilterPopoverBackdropEl.className = "employee-filter-popover-backdrop hidden";
+
+  employeeFilterPopoverEl = document.createElement("div");
+  employeeFilterPopoverEl.className = "employee-filter-popover hidden";
+
+  const header = document.createElement("div");
+  header.className = "employee-filter-popover-header";
+
+  employeeFilterPopoverTitleEl = document.createElement("div");
+  employeeFilterPopoverTitleEl.className = "employee-filter-header";
+  employeeFilterPopoverTitleEl.textContent = "Фильтр сотрудников";
+
+  const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
+  closeBtn.className = "employee-filter-close";
+  closeBtn.textContent = "✕";
+  closeBtn.setAttribute("aria-label", "Закрыть фильтр сотрудников");
+
+  header.appendChild(employeeFilterPopoverTitleEl);
+  header.appendChild(closeBtn);
+
+  employeeFilterPopoverMetaEl = document.createElement("div");
+  employeeFilterPopoverMetaEl.className = "employee-filter-meta";
+
+  employeeFilterPopoverListEl = document.createElement("div");
+  employeeFilterPopoverListEl.className = "employee-filter-list";
+
+  employeeFilterPopoverControlsEl = document.createElement("div");
+  employeeFilterPopoverControlsEl.className = "employee-filter-controls";
+
+  employeeFilterPopoverEl.appendChild(header);
+  employeeFilterPopoverEl.appendChild(employeeFilterPopoverMetaEl);
+  employeeFilterPopoverEl.appendChild(employeeFilterPopoverListEl);
+  employeeFilterPopoverEl.appendChild(employeeFilterPopoverControlsEl);
+
+  employeeFilterPopoverBackdropEl.appendChild(employeeFilterPopoverEl);
+  document.body.appendChild(employeeFilterPopoverBackdropEl);
+
+  const closeHandler = () => closeEmployeeFilterPopover();
+  employeeFilterPopoverBackdropEl.addEventListener("click", (event) => {
+    if (event.target === employeeFilterPopoverBackdropEl) {
+      closeHandler();
+    }
+  });
+  closeBtn.addEventListener("click", closeHandler);
+}
+
+function closeEmployeeFilterPopover() {
+  if (!employeeFilterPopoverEl || !employeeFilterPopoverBackdropEl) return;
+  employeeFilterPopoverBackdropEl.classList.add("hidden");
+  employeeFilterPopoverEl.classList.add("hidden");
+  if (employeeFilterPopoverKeydownHandler) {
+    document.removeEventListener("keydown", employeeFilterPopoverKeydownHandler);
+    employeeFilterPopoverKeydownHandler = null;
+  }
+}
+
+function openEmployeeFilterPopover({
+  line,
+  rows,
+  hiddenEmployeeIds,
+  table,
+  emptyRow,
+  onUpdateButton,
+}) {
+  if (!employeeFilterPopoverEl || !employeeFilterPopoverBackdropEl) return;
+
+  employeeFilterPopoverListEl.innerHTML = "";
+  employeeFilterPopoverControlsEl.innerHTML = "";
+
+  const masterLabel = document.createElement("label");
+  masterLabel.className = "employee-filter-item employee-filter-master";
+  const masterCheckbox = document.createElement("input");
+  masterCheckbox.type = "checkbox";
+  const masterText = document.createElement("span");
+  masterText.textContent = "Все сотрудники";
+  masterLabel.appendChild(masterCheckbox);
+  masterLabel.appendChild(masterText);
+  employeeFilterPopoverListEl.appendChild(masterLabel);
+
+  const itemCheckboxes = [];
+
+  for (const row of rows) {
+    const itemLabel = document.createElement("label");
+    itemLabel.className = "employee-filter-item";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = !hiddenEmployeeIds.has(row.employeeId);
+    checkbox.dataset.employeeId = String(row.employeeId);
+
+    const name = document.createElement("span");
+    name.textContent = row.employeeName;
+
+    itemLabel.appendChild(checkbox);
+    itemLabel.appendChild(name);
+    employeeFilterPopoverListEl.appendChild(itemLabel);
+    itemCheckboxes.push(checkbox);
+  }
+
+  const updateFilterUI = () => {
+    const total = rows.length;
+    const hiddenCount = hiddenEmployeeIds.size;
+    const visibleCount = total - hiddenCount;
+    masterCheckbox.checked = hiddenCount === 0;
+    masterCheckbox.indeterminate = hiddenCount > 0 && hiddenCount < total;
+    employeeFilterPopoverMetaEl.textContent = `Показано: ${visibleCount} из ${total}`;
+    if (onUpdateButton) onUpdateButton();
+  };
+
+  masterCheckbox.addEventListener("change", () => {
+    if (masterCheckbox.checked) {
+      hiddenEmployeeIds.clear();
+    } else {
+      for (const row of rows) {
+        hiddenEmployeeIds.add(row.employeeId);
+      }
+    }
+    for (const checkbox of itemCheckboxes) {
+      const id = Number(checkbox.dataset.employeeId);
+      checkbox.checked = !hiddenEmployeeIds.has(id);
+    }
+    setHiddenEmployeeIds(line, hiddenEmployeeIds);
+    updateFilterUI();
+    applyEmployeeFilterToTable(table, hiddenEmployeeIds, emptyRow);
+  });
+
+  for (const checkbox of itemCheckboxes) {
+    checkbox.addEventListener("change", () => {
+      const id = Number(checkbox.dataset.employeeId);
+      if (checkbox.checked) {
+        hiddenEmployeeIds.delete(id);
+      } else {
+        hiddenEmployeeIds.add(id);
+      }
+      setHiddenEmployeeIds(line, hiddenEmployeeIds);
+      updateFilterUI();
+      applyEmployeeFilterToTable(table, hiddenEmployeeIds, emptyRow);
+    });
+  }
+
+  const closeControl = document.createElement("button");
+  closeControl.type = "button";
+  closeControl.className = "employee-filter-close-action";
+  closeControl.textContent = "Закрыть";
+  closeControl.addEventListener("click", closeEmployeeFilterPopover);
+  employeeFilterPopoverControlsEl.appendChild(closeControl);
+
+  updateFilterUI();
+
+  employeeFilterPopoverBackdropEl.classList.remove("hidden");
+  employeeFilterPopoverEl.classList.remove("hidden");
+  employeeFilterPopoverKeydownHandler = (event) => {
+    if (event.key === "Escape") {
+      closeEmployeeFilterPopover();
+    }
+  };
+  document.addEventListener("keydown", employeeFilterPopoverKeydownHandler);
 }
 
 // -----------------------------
@@ -932,6 +1284,11 @@ function initQuickAssignPanel() {
   quickModeToggleEl?.addEventListener("click", () => {
     const currentLine = state.ui.currentLine;
     
+    if (state.ui.isScheduleCached) {
+      alert("Данные загружаются, редактирование временно недоступно.");
+      return;
+    }
+
     if (!canEditLine(currentLine)) {
       alert(`У вас нет прав на редактирование линии ${currentLine}`);
       return;
@@ -995,6 +1352,7 @@ function updateQuickModeToggleUI() {
 function updateQuickModeForLine() {
   const currentLine = state.ui.currentLine;
   const canEdit = canEditLine(currentLine);
+  const isCached = state.ui.isScheduleCached;
   
   if (!canEdit && state.quickMode.enabled) {
     state.quickMode.enabled = false;
@@ -1005,6 +1363,8 @@ function updateQuickModeForLine() {
     quickModeToggleEl.disabled = !canEdit;
     quickModeToggleEl.title = canEdit 
       ? "Включить быстрое назначение смен"
+      : isCached
+      ? "Данные загружаются, редактирование временно недоступно"
       : `Нет прав на редактирование ${currentLine}`;
   }
   
@@ -1045,11 +1405,16 @@ function updateSaveButtonState() {
   const currentLine = state.ui.currentLine;
   const canEdit = canEditLine(currentLine);
   const changesCount = countChangesForLine(currentLine);
+  const isCached = state.ui.isScheduleCached;
   
   if (!canEdit) {
-    btnSavePyrusEl.textContent = `Нет прав на ${currentLine}`;
+    btnSavePyrusEl.textContent = isCached
+      ? `Данные загружаются (${currentLine})`
+      : `Нет прав на ${currentLine}`;
     btnSavePyrusEl.disabled = true;
-    btnSavePyrusEl.title = `У вас только просмотр для линии ${currentLine}`;
+    btnSavePyrusEl.title = isCached
+      ? "Сейчас отображается кэш, редактирование временно отключено."
+      : `У вас только просмотр для линии ${currentLine}`;
   } else if (changesCount === 0) {
     btnSavePyrusEl.textContent = `Нет изменений (${currentLine})`;
     btnSavePyrusEl.disabled = true;
@@ -1486,6 +1851,23 @@ function handleShiftCellClick({ line, row, day, dayIndex, shift, cellEl }) {
 
 async function loadInitialData() {
   try {
+    const { year, monthIndex } = state.monthMeta;
+    const hadCachedEmployees = loadCachedEmployees();
+    const hadCachedTemplates = loadCachedShiftTemplates();
+    const hadCachedSchedule = loadCachedScheduleForMonth(year, monthIndex);
+
+    if (hadCachedTemplates) {
+      initQuickAssignPanel();
+    }
+
+    if (hadCachedSchedule) {
+      updateSaveButtonState();
+      updateQuickModeForLine();
+      if (typeof ShiftColors !== "undefined" && ShiftColors.renderColorLegend) {
+        ShiftColors.renderColorLegend(state.ui.currentLine);
+      }
+    }
+
     await loadEmployees();
     await loadShiftsCatalog();
     initQuickAssignPanel();
@@ -1614,6 +1996,8 @@ state.employeesByLine.L1 = sortEmployeesByName(employeesByLine.L1);
 state.employeesByLine.L2 = sortEmployeesByDeptOrder(employeesByLine.L2, DEPT_ORDER_BY_LINE.L2);
 state.employeesByLine.AI = sortEmployeesByName(employeesByLine.AI);
 state.employeesByLine.OU = sortEmployeesByName(employeesByLine.OU);
+
+persistCachedEmployees();
 }
 
 async function loadShiftsCatalog() {
@@ -1714,6 +2098,8 @@ async function loadShiftsCatalog() {
   if (typeof ShiftColors !== 'undefined' && ShiftColors.initialize) {
     ShiftColors.initialize(state.shiftTemplatesByLine, state.ui.theme);
   }
+
+  persistCachedShiftTemplates();
 }
 
 
@@ -1842,7 +2228,7 @@ async function reloadScheduleForCurrentMonth() {
     AI: { days: [], rows: [], monthKey: null },
     OU: { days: [], rows: [], monthKey: null },
   };
-  const monthKey = `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
+  const monthKey = getMonthKey(year, monthIndex);
 
   const shiftMapByLine = { ALL: Object.create(null), OP: Object.create(null), OV: Object.create(null), L1: Object.create(null), L2: Object.create(null), AI: Object.create(null), OU: Object.create(null) };
 
@@ -2005,6 +2391,8 @@ async function reloadScheduleForCurrentMonth() {
 
   state.originalScheduleByLine = deepClone(scheduleByLine);
   state.scheduleByLine = scheduleByLine;
+  state.ui.isScheduleCached = false;
+  persistCachedScheduleForMonth(year, monthIndex);
   applyLocalChangesToSchedule();
   renderScheduleCurrentLine();
 }
@@ -2013,7 +2401,26 @@ async function reloadScheduleForCurrentMonth() {
 // Рендер таблицы
 // -----------------------------
 
+function applyEmployeeFilterToTable(table, hiddenIds, emptyRowEl) {
+  const tbody = table.querySelector("tbody");
+  if (!tbody) return;
+  const dataRows = Array.from(tbody.querySelectorAll("tr")).filter(
+    (row) => !row.classList.contains("employee-filter-empty")
+  );
+  let visibleCount = 0;
+  for (const row of dataRows) {
+    const id = Number(row.dataset.employeeId);
+    const shouldHide = hiddenIds.has(id);
+    row.classList.toggle("employee-row-hidden", shouldHide);
+    if (!shouldHide) visibleCount += 1;
+  }
+  if (emptyRowEl) {
+    emptyRowEl.classList.toggle("hidden", visibleCount > 0);
+  }
+}
+
 function renderScheduleCurrentLine() {
+  closeEmployeeFilterPopover();
   const line = state.ui.currentLine;
   const sched = state.scheduleByLine[line];
 
@@ -2025,6 +2432,7 @@ function renderScheduleCurrentLine() {
 
   const canEdit = canEditLine(line);
   const { days, rows } = sched;
+  const hiddenEmployeeIds = normalizeHiddenEmployeeIds(line, rows);
 
   const table = document.createElement("table");
   table.className = "schedule-table";
@@ -2038,8 +2446,43 @@ function renderScheduleCurrentLine() {
   const headRow2 = document.createElement("tr");
 
   const thName = document.createElement("th");
-  thName.className = "sticky-col";
-  thName.textContent = "Сотрудник";
+  thName.className = "sticky-col employee-header-cell";
+
+  const thNameWrap = document.createElement("div");
+  thNameWrap.className = "employee-header";
+
+  const thNameLabel = document.createElement("span");
+  thNameLabel.textContent = "Сотрудник";
+
+  const filterBtn = document.createElement("button");
+  filterBtn.type = "button";
+  filterBtn.className = "employee-filter-btn";
+  filterBtn.setAttribute("aria-label", "Фильтр сотрудников");
+  filterBtn.innerHTML =
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7z"></path></svg>';
+  if (hiddenEmployeeIds.size > 0) filterBtn.classList.add("active");
+
+  const updateFilterButtonState = () => {
+    filterBtn.classList.toggle("active", hiddenEmployeeIds.size > 0);
+  };
+
+  let emptyRow = null;
+
+  filterBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openEmployeeFilterPopover({
+      line,
+      rows,
+      hiddenEmployeeIds,
+      table,
+      emptyRow,
+      onUpdateButton: updateFilterButtonState,
+    });
+  });
+
+  thNameWrap.appendChild(thNameLabel);
+  thNameWrap.appendChild(filterBtn);
+  thName.appendChild(thNameWrap);
   headRow1.appendChild(thName);
 
   const thName2 = document.createElement("th");
@@ -2099,6 +2542,7 @@ function renderScheduleCurrentLine() {
 
   rows.forEach((row) => {
     const tr = document.createElement("tr");
+    tr.dataset.employeeId = String(row.employeeId);
 
     const tdName = document.createElement("td");
     tdName.className = "sticky-col employee-name";
@@ -2291,9 +2735,19 @@ function renderScheduleCurrentLine() {
     tbody.appendChild(tr);
   });
 
+  emptyRow = document.createElement("tr");
+  emptyRow.className = "employee-filter-empty hidden";
+  const emptyCell = document.createElement("td");
+  emptyCell.colSpan = days.length + 2;
+  emptyCell.textContent = "Нет сотрудников для отображения по фильтру.";
+  emptyRow.appendChild(emptyCell);
+  tbody.appendChild(emptyRow);
+
   table.appendChild(tbody);
   scheduleRootEl.innerHTML = "";
   scheduleRootEl.appendChild(table);
+  updateFilterButtonState();
+  applyEmployeeFilterToTable(table, hiddenEmployeeIds, emptyRow);
 }
 
 // -----------------------------
