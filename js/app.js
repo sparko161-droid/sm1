@@ -95,6 +95,7 @@ const state = {
   ui: {
     currentLine: "ALL",
     theme: "dark",
+    isScheduleCached: false,
   },
   quickMode: {
     enabled: false,
@@ -163,6 +164,9 @@ const STORAGE_KEYS = {
   theme: "sm1_theme_preference",
   currentLine: "sm1_current_line",
   employeeFilters: "sm1_employee_filters",
+  cachedEmployees: "sm1_cached_employees",
+  cachedShiftTemplates: "sm1_cached_shift_templates",
+  cachedSchedulePrefix: "sm1_cached_schedule_",
 };
 
 function deepClone(obj) {
@@ -174,6 +178,7 @@ function deepClone(obj) {
 // -----------------------------
 
 function canEditLine(line) {
+  if (state.ui.isScheduleCached) return false;
   const permission = state.auth.permissions[line] || state.auth.permissions.ALL;
   return permission === "edit";
 }
@@ -759,6 +764,123 @@ function persistCurrentLinePreference() {
   }
 }
 
+function getMonthKey(year, monthIndex) {
+  return `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
+}
+
+function loadCachedEmployees() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.cachedEmployees);
+    if (!raw) return false;
+    const cached = JSON.parse(raw);
+    if (!cached || typeof cached !== "object") return false;
+
+    const employeesByLine = cached.employeesByLine;
+    if (!employeesByLine || typeof employeesByLine !== "object") return false;
+
+    for (const key of Object.keys(state.employeesByLine)) {
+      const list = employeesByLine[key];
+      state.employeesByLine[key] = Array.isArray(list) ? list : [];
+    }
+    return true;
+  } catch (err) {
+    console.warn("Не удалось загрузить кэш сотрудников", err);
+    return false;
+  }
+}
+
+function persistCachedEmployees() {
+  try {
+    localStorage.setItem(
+      STORAGE_KEYS.cachedEmployees,
+      JSON.stringify({
+        fetchedAt: Date.now(),
+        employeesByLine: state.employeesByLine,
+      })
+    );
+  } catch (err) {
+    console.warn("Не удалось сохранить кэш сотрудников", err);
+  }
+}
+
+function loadCachedShiftTemplates() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.cachedShiftTemplates);
+    if (!raw) return false;
+    const cached = JSON.parse(raw);
+    if (!cached || typeof cached !== "object") return false;
+
+    const templatesByLine = cached.shiftTemplatesByLine;
+    if (!templatesByLine || typeof templatesByLine !== "object") return false;
+
+    for (const key of Object.keys(state.shiftTemplatesByLine)) {
+      const list = templatesByLine[key];
+      state.shiftTemplatesByLine[key] = Array.isArray(list) ? list : [];
+    }
+
+    if (typeof ShiftColors !== "undefined" && ShiftColors.initialize) {
+      ShiftColors.initialize(state.shiftTemplatesByLine, state.ui.theme);
+    }
+    return true;
+  } catch (err) {
+    console.warn("Не удалось загрузить кэш шаблонов смен", err);
+    return false;
+  }
+}
+
+function persistCachedShiftTemplates() {
+  try {
+    localStorage.setItem(
+      STORAGE_KEYS.cachedShiftTemplates,
+      JSON.stringify({
+        fetchedAt: Date.now(),
+        shiftTemplatesByLine: state.shiftTemplatesByLine,
+      })
+    );
+  } catch (err) {
+    console.warn("Не удалось сохранить кэш шаблонов смен", err);
+  }
+}
+
+function loadCachedScheduleForMonth(year, monthIndex) {
+  try {
+    const monthKey = getMonthKey(year, monthIndex);
+    const raw = localStorage.getItem(`${STORAGE_KEYS.cachedSchedulePrefix}${monthKey}`);
+    if (!raw) return false;
+    const cached = JSON.parse(raw);
+    if (!cached || typeof cached !== "object") return false;
+    if (!cached.scheduleByLine || typeof cached.scheduleByLine !== "object") return false;
+
+    state.scheduleByLine = cached.scheduleByLine;
+    state.originalScheduleByLine = deepClone(cached.scheduleByLine);
+    state.vacationsByEmployee = cached.vacationsByEmployee || {};
+    state.ui.isScheduleCached = true;
+
+    applyLocalChangesToSchedule();
+    renderScheduleCurrentLine();
+    return true;
+  } catch (err) {
+    console.warn("Не удалось загрузить кэш графика", err);
+    return false;
+  }
+}
+
+function persistCachedScheduleForMonth(year, monthIndex) {
+  try {
+    const monthKey = getMonthKey(year, monthIndex);
+    localStorage.setItem(
+      `${STORAGE_KEYS.cachedSchedulePrefix}${monthKey}`,
+      JSON.stringify({
+        fetchedAt: Date.now(),
+        scheduleByLine: state.scheduleByLine,
+        vacationsByEmployee: state.vacationsByEmployee,
+      })
+    );
+  } catch (err) {
+    console.warn("Не удалось сохранить кэш графика", err);
+  }
+}
+
 function loadEmployeeFilters() {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.employeeFilters);
@@ -1162,6 +1284,11 @@ function initQuickAssignPanel() {
   quickModeToggleEl?.addEventListener("click", () => {
     const currentLine = state.ui.currentLine;
     
+    if (state.ui.isScheduleCached) {
+      alert("Данные загружаются, редактирование временно недоступно.");
+      return;
+    }
+
     if (!canEditLine(currentLine)) {
       alert(`У вас нет прав на редактирование линии ${currentLine}`);
       return;
@@ -1225,6 +1352,7 @@ function updateQuickModeToggleUI() {
 function updateQuickModeForLine() {
   const currentLine = state.ui.currentLine;
   const canEdit = canEditLine(currentLine);
+  const isCached = state.ui.isScheduleCached;
   
   if (!canEdit && state.quickMode.enabled) {
     state.quickMode.enabled = false;
@@ -1235,6 +1363,8 @@ function updateQuickModeForLine() {
     quickModeToggleEl.disabled = !canEdit;
     quickModeToggleEl.title = canEdit 
       ? "Включить быстрое назначение смен"
+      : isCached
+      ? "Данные загружаются, редактирование временно недоступно"
       : `Нет прав на редактирование ${currentLine}`;
   }
   
@@ -1275,11 +1405,16 @@ function updateSaveButtonState() {
   const currentLine = state.ui.currentLine;
   const canEdit = canEditLine(currentLine);
   const changesCount = countChangesForLine(currentLine);
+  const isCached = state.ui.isScheduleCached;
   
   if (!canEdit) {
-    btnSavePyrusEl.textContent = `Нет прав на ${currentLine}`;
+    btnSavePyrusEl.textContent = isCached
+      ? `Данные загружаются (${currentLine})`
+      : `Нет прав на ${currentLine}`;
     btnSavePyrusEl.disabled = true;
-    btnSavePyrusEl.title = `У вас только просмотр для линии ${currentLine}`;
+    btnSavePyrusEl.title = isCached
+      ? "Сейчас отображается кэш, редактирование временно отключено."
+      : `У вас только просмотр для линии ${currentLine}`;
   } else if (changesCount === 0) {
     btnSavePyrusEl.textContent = `Нет изменений (${currentLine})`;
     btnSavePyrusEl.disabled = true;
@@ -1716,6 +1851,23 @@ function handleShiftCellClick({ line, row, day, dayIndex, shift, cellEl }) {
 
 async function loadInitialData() {
   try {
+    const { year, monthIndex } = state.monthMeta;
+    const hadCachedEmployees = loadCachedEmployees();
+    const hadCachedTemplates = loadCachedShiftTemplates();
+    const hadCachedSchedule = loadCachedScheduleForMonth(year, monthIndex);
+
+    if (hadCachedTemplates) {
+      initQuickAssignPanel();
+    }
+
+    if (hadCachedSchedule) {
+      updateSaveButtonState();
+      updateQuickModeForLine();
+      if (typeof ShiftColors !== "undefined" && ShiftColors.renderColorLegend) {
+        ShiftColors.renderColorLegend(state.ui.currentLine);
+      }
+    }
+
     await loadEmployees();
     await loadShiftsCatalog();
     initQuickAssignPanel();
@@ -1844,6 +1996,8 @@ state.employeesByLine.L1 = sortEmployeesByName(employeesByLine.L1);
 state.employeesByLine.L2 = sortEmployeesByDeptOrder(employeesByLine.L2, DEPT_ORDER_BY_LINE.L2);
 state.employeesByLine.AI = sortEmployeesByName(employeesByLine.AI);
 state.employeesByLine.OU = sortEmployeesByName(employeesByLine.OU);
+
+persistCachedEmployees();
 }
 
 async function loadShiftsCatalog() {
@@ -1944,6 +2098,8 @@ async function loadShiftsCatalog() {
   if (typeof ShiftColors !== 'undefined' && ShiftColors.initialize) {
     ShiftColors.initialize(state.shiftTemplatesByLine, state.ui.theme);
   }
+
+  persistCachedShiftTemplates();
 }
 
 
@@ -2072,7 +2228,7 @@ async function reloadScheduleForCurrentMonth() {
     AI: { days: [], rows: [], monthKey: null },
     OU: { days: [], rows: [], monthKey: null },
   };
-  const monthKey = `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
+  const monthKey = getMonthKey(year, monthIndex);
 
   const shiftMapByLine = { ALL: Object.create(null), OP: Object.create(null), OV: Object.create(null), L1: Object.create(null), L2: Object.create(null), AI: Object.create(null), OU: Object.create(null) };
 
@@ -2235,6 +2391,8 @@ async function reloadScheduleForCurrentMonth() {
 
   state.originalScheduleByLine = deepClone(scheduleByLine);
   state.scheduleByLine = scheduleByLine;
+  state.ui.isScheduleCached = false;
+  persistCachedScheduleForMonth(year, monthIndex);
   applyLocalChangesToSchedule();
   renderScheduleCurrentLine();
 }
