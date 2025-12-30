@@ -600,7 +600,12 @@ let shiftPopoverEl = null;
 let shiftPopoverBackdropEl = null;
 let shiftPopoverKeydownHandler = null;
 let employeeFilterPopoverEl = null;
-let employeeFilterPopoverHandler = null;
+let employeeFilterPopoverBackdropEl = null;
+let employeeFilterPopoverKeydownHandler = null;
+let employeeFilterPopoverTitleEl = null;
+let employeeFilterPopoverMetaEl = null;
+let employeeFilterPopoverListEl = null;
+let employeeFilterPopoverControlsEl = null;
 
 // -----------------------------
 // Инициализация
@@ -624,6 +629,7 @@ function init() {
   bindTopBarButtons();
   bindHistoryControls();
   createShiftPopover();
+  createEmployeeFilterPopover();
   renderChangeLog();
 
   // Если восстановили сессию — загружаем данные как после логина
@@ -800,30 +806,168 @@ function setHiddenEmployeeIds(line, ids) {
   persistEmployeeFilters();
 }
 
+function createEmployeeFilterPopover() {
+  if (employeeFilterPopoverEl) return;
+
+  employeeFilterPopoverBackdropEl = document.createElement("div");
+  employeeFilterPopoverBackdropEl.className = "employee-filter-popover-backdrop hidden";
+
+  employeeFilterPopoverEl = document.createElement("div");
+  employeeFilterPopoverEl.className = "employee-filter-popover hidden";
+
+  const header = document.createElement("div");
+  header.className = "employee-filter-popover-header";
+
+  employeeFilterPopoverTitleEl = document.createElement("div");
+  employeeFilterPopoverTitleEl.className = "employee-filter-header";
+  employeeFilterPopoverTitleEl.textContent = "Фильтр сотрудников";
+
+  const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
+  closeBtn.className = "employee-filter-close";
+  closeBtn.textContent = "✕";
+  closeBtn.setAttribute("aria-label", "Закрыть фильтр сотрудников");
+
+  header.appendChild(employeeFilterPopoverTitleEl);
+  header.appendChild(closeBtn);
+
+  employeeFilterPopoverMetaEl = document.createElement("div");
+  employeeFilterPopoverMetaEl.className = "employee-filter-meta";
+
+  employeeFilterPopoverListEl = document.createElement("div");
+  employeeFilterPopoverListEl.className = "employee-filter-list";
+
+  employeeFilterPopoverControlsEl = document.createElement("div");
+  employeeFilterPopoverControlsEl.className = "employee-filter-controls";
+
+  employeeFilterPopoverEl.appendChild(header);
+  employeeFilterPopoverEl.appendChild(employeeFilterPopoverMetaEl);
+  employeeFilterPopoverEl.appendChild(employeeFilterPopoverListEl);
+  employeeFilterPopoverEl.appendChild(employeeFilterPopoverControlsEl);
+
+  employeeFilterPopoverBackdropEl.appendChild(employeeFilterPopoverEl);
+  document.body.appendChild(employeeFilterPopoverBackdropEl);
+
+  const closeHandler = () => closeEmployeeFilterPopover();
+  employeeFilterPopoverBackdropEl.addEventListener("click", (event) => {
+    if (event.target === employeeFilterPopoverBackdropEl) {
+      closeHandler();
+    }
+  });
+  closeBtn.addEventListener("click", closeHandler);
+}
+
 function closeEmployeeFilterPopover() {
-  if (!employeeFilterPopoverEl) return;
-  employeeFilterPopoverEl.classList.remove("open");
-  employeeFilterPopoverEl = null;
-  if (employeeFilterPopoverHandler) {
-    document.removeEventListener("click", employeeFilterPopoverHandler);
-    employeeFilterPopoverHandler = null;
+  if (!employeeFilterPopoverEl || !employeeFilterPopoverBackdropEl) return;
+  employeeFilterPopoverBackdropEl.classList.add("hidden");
+  employeeFilterPopoverEl.classList.add("hidden");
+  if (employeeFilterPopoverKeydownHandler) {
+    document.removeEventListener("keydown", employeeFilterPopoverKeydownHandler);
+    employeeFilterPopoverKeydownHandler = null;
   }
 }
 
-function openEmployeeFilterPopover(popoverEl, buttonEl) {
-  if (employeeFilterPopoverEl === popoverEl) {
-    closeEmployeeFilterPopover();
-    return;
+function openEmployeeFilterPopover({
+  line,
+  rows,
+  hiddenEmployeeIds,
+  table,
+  emptyRow,
+  onUpdateButton,
+}) {
+  if (!employeeFilterPopoverEl || !employeeFilterPopoverBackdropEl) return;
+
+  employeeFilterPopoverListEl.innerHTML = "";
+  employeeFilterPopoverControlsEl.innerHTML = "";
+
+  const masterLabel = document.createElement("label");
+  masterLabel.className = "employee-filter-item employee-filter-master";
+  const masterCheckbox = document.createElement("input");
+  masterCheckbox.type = "checkbox";
+  const masterText = document.createElement("span");
+  masterText.textContent = "Все сотрудники";
+  masterLabel.appendChild(masterCheckbox);
+  masterLabel.appendChild(masterText);
+  employeeFilterPopoverListEl.appendChild(masterLabel);
+
+  const itemCheckboxes = [];
+
+  for (const row of rows) {
+    const itemLabel = document.createElement("label");
+    itemLabel.className = "employee-filter-item";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = !hiddenEmployeeIds.has(row.employeeId);
+    checkbox.dataset.employeeId = String(row.employeeId);
+
+    const name = document.createElement("span");
+    name.textContent = row.employeeName;
+
+    itemLabel.appendChild(checkbox);
+    itemLabel.appendChild(name);
+    employeeFilterPopoverListEl.appendChild(itemLabel);
+    itemCheckboxes.push(checkbox);
   }
-  closeEmployeeFilterPopover();
-  popoverEl.classList.add("open");
-  employeeFilterPopoverEl = popoverEl;
-  employeeFilterPopoverHandler = (event) => {
-    if (!popoverEl.contains(event.target) && event.target !== buttonEl) {
+
+  const updateFilterUI = () => {
+    const total = rows.length;
+    const hiddenCount = hiddenEmployeeIds.size;
+    const visibleCount = total - hiddenCount;
+    masterCheckbox.checked = hiddenCount === 0;
+    masterCheckbox.indeterminate = hiddenCount > 0 && hiddenCount < total;
+    employeeFilterPopoverMetaEl.textContent = `Показано: ${visibleCount} из ${total}`;
+    if (onUpdateButton) onUpdateButton();
+  };
+
+  masterCheckbox.addEventListener("change", () => {
+    if (masterCheckbox.checked) {
+      hiddenEmployeeIds.clear();
+    } else {
+      for (const row of rows) {
+        hiddenEmployeeIds.add(row.employeeId);
+      }
+    }
+    for (const checkbox of itemCheckboxes) {
+      const id = Number(checkbox.dataset.employeeId);
+      checkbox.checked = !hiddenEmployeeIds.has(id);
+    }
+    setHiddenEmployeeIds(line, hiddenEmployeeIds);
+    updateFilterUI();
+    applyEmployeeFilterToTable(table, hiddenEmployeeIds, emptyRow);
+  });
+
+  for (const checkbox of itemCheckboxes) {
+    checkbox.addEventListener("change", () => {
+      const id = Number(checkbox.dataset.employeeId);
+      if (checkbox.checked) {
+        hiddenEmployeeIds.delete(id);
+      } else {
+        hiddenEmployeeIds.add(id);
+      }
+      setHiddenEmployeeIds(line, hiddenEmployeeIds);
+      updateFilterUI();
+      applyEmployeeFilterToTable(table, hiddenEmployeeIds, emptyRow);
+    });
+  }
+
+  const closeControl = document.createElement("button");
+  closeControl.type = "button";
+  closeControl.className = "employee-filter-close-action";
+  closeControl.textContent = "Закрыть";
+  closeControl.addEventListener("click", closeEmployeeFilterPopover);
+  employeeFilterPopoverControlsEl.appendChild(closeControl);
+
+  updateFilterUI();
+
+  employeeFilterPopoverBackdropEl.classList.remove("hidden");
+  employeeFilterPopoverEl.classList.remove("hidden");
+  employeeFilterPopoverKeydownHandler = (event) => {
+    if (event.key === "Escape") {
       closeEmployeeFilterPopover();
     }
   };
-  setTimeout(() => document.addEventListener("click", employeeFilterPopoverHandler), 0);
+  document.addEventListener("keydown", employeeFilterPopoverKeydownHandler);
 }
 
 // -----------------------------
@@ -2160,107 +2304,26 @@ function renderScheduleCurrentLine() {
     '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7z"></path></svg>';
   if (hiddenEmployeeIds.size > 0) filterBtn.classList.add("active");
 
-  const filterPopover = document.createElement("div");
-  filterPopover.className = "employee-filter-popover";
-
-  const popoverHeader = document.createElement("div");
-  popoverHeader.className = "employee-filter-header";
-  popoverHeader.textContent = "Фильтр сотрудников";
-
-  const popoverMeta = document.createElement("div");
-  popoverMeta.className = "employee-filter-meta";
-
-  const popoverList = document.createElement("div");
-  popoverList.className = "employee-filter-list";
-
-  const masterLabel = document.createElement("label");
-  masterLabel.className = "employee-filter-item employee-filter-master";
-  const masterCheckbox = document.createElement("input");
-  masterCheckbox.type = "checkbox";
-  const masterText = document.createElement("span");
-  masterText.textContent = "Все сотрудники";
-  masterLabel.appendChild(masterCheckbox);
-  masterLabel.appendChild(masterText);
-  popoverList.appendChild(masterLabel);
-
-  const itemCheckboxes = [];
-
-  for (const row of rows) {
-    const itemLabel = document.createElement("label");
-    itemLabel.className = "employee-filter-item";
-
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.checked = !hiddenEmployeeIds.has(row.employeeId);
-    checkbox.dataset.employeeId = String(row.employeeId);
-
-    const name = document.createElement("span");
-    name.textContent = row.employeeName;
-
-    itemLabel.appendChild(checkbox);
-    itemLabel.appendChild(name);
-    popoverList.appendChild(itemLabel);
-    itemCheckboxes.push(checkbox);
-  }
-
-  const updateFilterUI = () => {
-    const total = rows.length;
-    const hiddenCount = hiddenEmployeeIds.size;
-    const visibleCount = total - hiddenCount;
-    masterCheckbox.checked = hiddenCount === 0;
-    masterCheckbox.indeterminate = hiddenCount > 0 && hiddenCount < total;
-    popoverMeta.textContent = `Показано: ${visibleCount} из ${total}`;
-    filterBtn.classList.toggle("active", hiddenCount > 0);
+  const updateFilterButtonState = () => {
+    filterBtn.classList.toggle("active", hiddenEmployeeIds.size > 0);
   };
 
   let emptyRow = null;
 
-  masterCheckbox.addEventListener("change", () => {
-    if (masterCheckbox.checked) {
-      hiddenEmployeeIds.clear();
-    } else {
-      for (const row of rows) {
-        hiddenEmployeeIds.add(row.employeeId);
-      }
-    }
-    for (const checkbox of itemCheckboxes) {
-      const id = Number(checkbox.dataset.employeeId);
-      checkbox.checked = !hiddenEmployeeIds.has(id);
-    }
-    setHiddenEmployeeIds(line, hiddenEmployeeIds);
-    updateFilterUI();
-    if (emptyRow) {
-      applyEmployeeFilterToTable(table, hiddenEmployeeIds, emptyRow);
-    }
-  });
-
-  for (const checkbox of itemCheckboxes) {
-    checkbox.addEventListener("change", () => {
-      const id = Number(checkbox.dataset.employeeId);
-      if (checkbox.checked) {
-        hiddenEmployeeIds.delete(id);
-      } else {
-        hiddenEmployeeIds.add(id);
-      }
-      setHiddenEmployeeIds(line, hiddenEmployeeIds);
-      updateFilterUI();
-      if (emptyRow) {
-        applyEmployeeFilterToTable(table, hiddenEmployeeIds, emptyRow);
-      }
-    });
-  }
-
   filterBtn.addEventListener("click", (event) => {
     event.stopPropagation();
-    openEmployeeFilterPopover(filterPopover, filterBtn);
+    openEmployeeFilterPopover({
+      line,
+      rows,
+      hiddenEmployeeIds,
+      table,
+      emptyRow,
+      onUpdateButton: updateFilterButtonState,
+    });
   });
 
   thNameWrap.appendChild(thNameLabel);
   thNameWrap.appendChild(filterBtn);
-  filterPopover.appendChild(popoverHeader);
-  filterPopover.appendChild(popoverMeta);
-  filterPopover.appendChild(popoverList);
-  thNameWrap.appendChild(filterPopover);
   thName.appendChild(thNameWrap);
   headRow1.appendChild(thName);
 
@@ -2525,7 +2588,7 @@ function renderScheduleCurrentLine() {
   table.appendChild(tbody);
   scheduleRootEl.innerHTML = "";
   scheduleRootEl.appendChild(table);
-  updateFilterUI();
+  updateFilterButtonState();
   applyEmployeeFilterToTable(table, hiddenEmployeeIds, emptyRow);
 }
 
